@@ -37,6 +37,20 @@ const appointmentSchema = new mongoose.Schema({
     default: 'SCHEDULED',
     index: true
   },
+  /** Display order within the same clinicDayId + timeWindow (0-based). */
+  order: {
+    type: Number,
+    default: null
+  },
+  /** Client priority label e.g. P0–P3 */
+  priority: {
+    type: String,
+    default: null
+  },
+  note: {
+    type: String,
+    default: null
+  },
   priorityTier: {
     type: Number,
     default: null

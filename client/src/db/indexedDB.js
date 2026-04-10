@@ -1,10 +1,119 @@
 import Dexie from 'dexie';
 import { API_BASE_URL, getApiPath } from '../config';
+import { toYmd } from '../utils/dates';
 
 const db = new Dexie('ToothAidDB');
 
-db.version(24).stores({
-  children: 'childId, fullName, school, barangay, updatedAt',
+/** True when pull payload has no meaningful value (legacy rows / partial JSON / empty containers). */
+function isServerPayloadValueEmpty(v, opts = {}) {
+  const { treatBlankStringAsEmpty = false } = opts;
+  if (v === undefined || v === null) return true;
+  if (treatBlankStringAsEmpty && typeof v === 'string' && v.trim() === '') return true;
+  if (Array.isArray(v) && v.length === 0) return true;
+  if (typeof v === 'object' && !Array.isArray(v) && v && Object.keys(v).length === 0) return true;
+  return false;
+}
+
+function localHasMergeableValue(lv, opts = {}) {
+  const { treatBlankStringAsEmpty = false } = opts;
+  if (lv === undefined || lv === null) return false;
+  if (treatBlankStringAsEmpty && typeof lv === 'string' && lv.trim() === '') return false;
+  if (Array.isArray(lv) && lv.length === 0) return false;
+  if (typeof lv === 'object' && !Array.isArray(lv) && lv && Object.keys(lv).length === 0) return false;
+  return true;
+}
+
+/** Pull must not wipe AM/PM when server rows are legacy (null) or JSON omits fields. */
+function mergeClinicDayRowFromPull(serverRow, local) {
+  const { _id, __v, ...rest } = serverRow;
+  const merged = { ...(local || {}), ...rest };
+  if (merged.date != null) merged.date = toYmd(merged.date);
+  const sAm = rest.amCapacity;
+  const sPm = rest.pmCapacity;
+  merged.amCapacity =
+    typeof sAm === 'number' && !Number.isNaN(sAm) ? sAm : local?.amCapacity ?? null;
+  merged.pmCapacity =
+    typeof sPm === 'number' && !Number.isNaN(sPm) ? sPm : local?.pmCapacity ?? null;
+  merged.capacity =
+    typeof rest.capacity === 'number' && !Number.isNaN(rest.capacity)
+      ? rest.capacity
+      : (merged.amCapacity ?? 0) + (merged.pmCapacity ?? 0);
+  return merged;
+}
+
+/** Pull must not wipe meds / tooth charts when server omits a field or stores null (legacy). */
+function mergeVisitRowFromPull(serverRow, local) {
+  const { _id, __v, ...rest } = serverRow || {};
+  const merged = { ...(local || {}), ...rest };
+
+  const restoreIfServerMissingOrEmpty = (key, opts) => {
+    if (!isServerPayloadValueEmpty(rest[key], opts)) return;
+    if (localHasMergeableValue(local?.[key], opts)) merged[key] = local[key];
+  };
+
+  // These are client-authored, and older servers may drop them.
+  restoreIfServerMissingOrEmpty('medications');
+  restoreIfServerMissingOrEmpty('treatments');
+  restoreIfServerMissingOrEmpty('toothExaminations');
+  restoreIfServerMissingOrEmpty('toothRecords');
+  restoreIfServerMissingOrEmpty('chiefComplaint', { treatBlankStringAsEmpty: true });
+  restoreIfServerMissingOrEmpty('notes', { treatBlankStringAsEmpty: true });
+  if (rest.dentition === undefined || rest.dentition === null) {
+    if (local?.dentition != null) merged.dentition = local.dentition;
+  }
+
+  return merged;
+}
+
+/** Same class of pull overwrite issue as visits — preserve rich local fields when server row is empty. */
+function mergeChildRowFromPull(serverRow, local) {
+  const { _id, __v, ...rest } = serverRow || {};
+  const merged = { ...(local || {}), ...rest };
+
+  const restoreIfServerMissingOrEmpty = (key, opts) => {
+    if (!isServerPayloadValueEmpty(rest[key], opts)) return;
+    if (localHasMergeableValue(local?.[key], opts)) merged[key] = local[key];
+  };
+
+  restoreIfServerMissingOrEmpty('toothStates');
+  restoreIfServerMissingOrEmpty('consentSpecific');
+  restoreIfServerMissingOrEmpty('patientId', { treatBlankStringAsEmpty: true });
+  restoreIfServerMissingOrEmpty('notes', { treatBlankStringAsEmpty: true });
+
+  return merged;
+}
+
+/**
+ * Appointments: same overwrite risk when pull rows are partial / legacy.
+ * Do not restore primary keys (appointmentId, childId, clinicDayId) — server is source of truth for those.
+ */
+function mergeAppointmentRowFromPull(serverRow, local) {
+  const { _id, __v, ...rest } = serverRow || {};
+  const merged = { ...(local || {}), ...rest };
+
+  const restoreIfServerMissingOrEmpty = (key, opts) => {
+    if (!isServerPayloadValueEmpty(rest[key], opts)) return;
+    if (localHasMergeableValue(local?.[key], opts)) merged[key] = local[key];
+  };
+
+  restoreIfServerMissingOrEmpty('timeWindow', { treatBlankStringAsEmpty: true });
+  restoreIfServerMissingOrEmpty('slotNumber');
+  restoreIfServerMissingOrEmpty('reason', { treatBlankStringAsEmpty: true });
+  restoreIfServerMissingOrEmpty('status', { treatBlankStringAsEmpty: true });
+  restoreIfServerMissingOrEmpty('priorityTier');
+  restoreIfServerMissingOrEmpty('order');
+  restoreIfServerMissingOrEmpty('priority', { treatBlankStringAsEmpty: true });
+  restoreIfServerMissingOrEmpty('note', { treatBlankStringAsEmpty: true });
+  restoreIfServerMissingOrEmpty('createdBy', { treatBlankStringAsEmpty: true });
+  // Reserved for future client / server extensions
+  restoreIfServerMissingOrEmpty('metadata');
+  restoreIfServerMissingOrEmpty('notes', { treatBlankStringAsEmpty: true });
+
+  return merged;
+}
+
+db.version(25).stores({
+  children: 'childId, patientId, fullName, school, barangay, updatedAt',
   visits: 'visitId, childId, date, createdAt',
   outbox: 'opId, ts, action, entityId',
   meta: 'key',
@@ -88,13 +197,17 @@ export const getChild = async (childId) => {
 
 export const searchChildren = async (query) => {
   const lowerQuery = query.toLowerCase();
+  const digitsOnly = query.replace(/\D/g, '');
   const children = await db.children
     .filter(child =>
       (child.fullName && child.fullName.toLowerCase().includes(lowerQuery)) ||
       (child.firstName && child.firstName.toLowerCase().includes(lowerQuery)) ||
       (child.lastName && child.lastName.toLowerCase().includes(lowerQuery)) ||
       (child.school && child.school.toLowerCase().includes(lowerQuery)) ||
-      (child.barangay && child.barangay.toLowerCase().includes(lowerQuery))
+      (child.barangay && child.barangay.toLowerCase().includes(lowerQuery)) ||
+      (digitsOnly.length >= 2 &&
+        child.patientId &&
+        String(child.patientId).includes(digitsOnly))
     )
     .toArray();
   return sortChildrenByLastName(children);
@@ -381,7 +494,11 @@ export const syncPush = async (token) => {
 };
 
 export const syncPull = async (token, since = null, scope = 'ALL') => {
-  const lastSync = since || await getLastSyncAt();
+  // If local DB is empty (fresh browser/device), force a full pull regardless of stale lastSyncAt
+  // so seed/demo data can be loaded.
+  const localChildCount = await db.children.count().catch(() => 0);
+  const storedLastSync = await getLastSyncAt();
+  const lastSync = (since || (localChildCount > 0 ? storedLastSync : null));
   const params = new URLSearchParams();
   if (lastSync) {
     params.append('since', lastSync);
@@ -404,24 +521,48 @@ export const syncPull = async (token, since = null, scope = 'ALL') => {
 
   const result = await response.json();
   
-  // Store children
+  // Store children (merge so pull does not clobber toothStates / consent / notes)
   if (result.children && result.children.length > 0) {
-    await db.children.bulkPut(result.children);
+    const mergedChildren = await Promise.all(
+      result.children.map(async (row) => {
+        const local = row.childId ? await db.children.get(row.childId) : null;
+        return mergeChildRowFromPull(row, local);
+      })
+    );
+    await db.children.bulkPut(mergedChildren);
   }
   
-  // Store visits
+  // Store visits (merge so pull does not drop local medications / tooth snapshots)
   if (result.visits && result.visits.length > 0) {
-    await db.visits.bulkPut(result.visits);
+    const mergedVisits = await Promise.all(
+      result.visits.map(async (row) => {
+        const local = row.visitId ? await db.visits.get(row.visitId) : null;
+        return mergeVisitRowFromPull(row, local);
+      })
+    );
+    await db.visits.bulkPut(mergedVisits);
   }
   
-  // Store clinic days
+  // Store clinic days (merge so pull does not overwrite fresh AM/PM with null/legacy server fields)
   if (result.clinicDays && result.clinicDays.length > 0) {
-    await db.clinicDays.bulkPut(result.clinicDays);
+    const merged = await Promise.all(
+      result.clinicDays.map(async (row) => {
+        const local = row.clinicDayId ? await db.clinicDays.get(row.clinicDayId) : null;
+        return mergeClinicDayRowFromPull(row, local);
+      })
+    );
+    await db.clinicDays.bulkPut(merged);
   }
   
-  // Store appointments
+  // Store appointments (merge so pull does not clobber nullable / optional fields)
   if (result.appointments && result.appointments.length > 0) {
-    await db.appointments.bulkPut(result.appointments);
+    const mergedAppointments = await Promise.all(
+      result.appointments.map(async (row) => {
+        const local = row.appointmentId ? await db.appointments.get(row.appointmentId) : null;
+        return mergeAppointmentRowFromPull(row, local);
+      })
+    );
+    await db.appointments.bulkPut(mergedAppointments);
   }
   
   // Handle deletions: remove local records that don't exist on server
@@ -453,6 +594,16 @@ export const syncPull = async (token, since = null, scope = 'ALL') => {
     }
   }
   
+  // Pending upserts must survive pull-side deletion: push may fail or not be acked yet,
+  // but we would otherwise remove "only local" rows and make batch edits look like no-ops.
+  const outboxOps = await getOutboxOps();
+  const pendingClinicDayUpserts = new Set(
+    outboxOps.filter((o) => o.action === 'UPSERT_CLINIC_DAY' && o.entityId).map((o) => o.entityId)
+  );
+  const pendingAppointmentUpserts = new Set(
+    outboxOps.filter((o) => o.action === 'UPSERT_APPOINTMENT' && o.entityId).map((o) => o.entityId)
+  );
+
   if (result.allVisitIds && Array.isArray(result.allVisitIds)) {
     const localVisits = await db.visits.toCollection().primaryKeys();
     const serverVisitIds = new Set(result.allVisitIds);
@@ -467,15 +618,21 @@ export const syncPull = async (token, since = null, scope = 'ALL') => {
   if (result.allClinicDayIds && Array.isArray(result.allClinicDayIds)) {
     const localClinicDays = await db.clinicDays.toCollection().primaryKeys();
     const serverClinicDayIds = new Set(result.allClinicDayIds);
-    const toDelete = localClinicDays.filter(id => !serverClinicDayIds.has(id));
+    const toDelete = localClinicDays.filter(
+      (id) => !serverClinicDayIds.has(id) && !pendingClinicDayUpserts.has(id)
+    );
     
     if (toDelete.length > 0) {
       // Also delete appointments for deleted clinic days
       const deletedClinicDayIds = new Set(toDelete);
       const allAppointments = await db.appointments.toArray();
       const appointmentsToDelete = allAppointments
-        .filter(a => deletedClinicDayIds.has(a.clinicDayId))
-        .map(a => a.appointmentId);
+        .filter(
+          (a) =>
+            deletedClinicDayIds.has(a.clinicDayId) &&
+            !pendingAppointmentUpserts.has(a.appointmentId)
+        )
+        .map((a) => a.appointmentId);
       
       if (appointmentsToDelete.length > 0) {
         await db.appointments.bulkDelete(appointmentsToDelete);
@@ -490,7 +647,9 @@ export const syncPull = async (token, since = null, scope = 'ALL') => {
   if (result.allAppointmentIds && Array.isArray(result.allAppointmentIds)) {
     const localAppointments = await db.appointments.toCollection().primaryKeys();
     const serverAppointmentIds = new Set(result.allAppointmentIds);
-    const toDelete = localAppointments.filter(id => !serverAppointmentIds.has(id));
+    const toDelete = localAppointments.filter(
+      (id) => !serverAppointmentIds.has(id) && !pendingAppointmentUpserts.has(id)
+    );
     
     if (toDelete.length > 0) {
       await db.appointments.bulkDelete(toDelete);
@@ -526,6 +685,22 @@ export const performSync = async (token) => {
     };
   } catch (error) {
     console.error('Sync error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Force a full pull (ignores lastSyncAt) - useful for refreshing demo data
+export const performFullSync = async (token) => {
+  try {
+    await syncPush(token);
+    const pullResult = await syncPull(token, '1970-01-01T00:00:00.000Z');
+    return {
+      success: true,
+      deletedCount: pullResult.deletedCount || 0,
+      message: 'Full sync completed successfully!'
+    };
+  } catch (error) {
+    console.error('Full sync error:', error);
     return { success: false, error: error.message };
   }
 };

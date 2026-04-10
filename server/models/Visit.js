@@ -37,9 +37,36 @@ const visitSchema = new mongoose.Schema({
     type: Number,
     default: null
   },
+  /** PERMANENT | PRIMARY — used for charts; optional for legacy rows */
+  dentition: {
+    type: String,
+    default: null
+  },
+  /** FDI tooth key → { condition, note? } — client-authored examination snapshot */
+  toothRecords: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
+  toothExaminations: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
   treatmentTypes: {
     type: [String],
     default: []
+  },
+  /** Visit Entry: per-visit treatment labels (e.g. Cleaning, Filling). */
+  treatments: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
+  medications: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
+  chiefComplaint: {
+    type: String,
+    default: null
   },
   notes: {
     type: String,

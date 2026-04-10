@@ -1,14 +1,21 @@
 import { useState, useEffect } from 'react';
+import {
+  CHILD_SCHOOL_PRESETS,
+  CHILD_SCHOOL_UI_OTHER
+} from '../constants/childSchools';
 import { Link, useNavigate } from 'react-router-dom';
 import NavBar from '../components/NavBar';
 import PageHeader from '../components/PageHeader';
 import DateInput from '../components/DateInput';
-import { upsertChild, addToOutbox, checkDuplicates, performSync } from '../db/indexedDB';
+import { PatientNameBlock } from '../components/PatientNameBlock';
+import { upsertChild, addToOutbox, checkDuplicates, performSync, getAllChildren } from '../db/indexedDB';
 import { getAgeFromDOB } from '../utils/age';
-import { formatChildDisplayName } from '../utils/displayName';
+import { notifyError, notifySuccess } from '../utils/notify';
+import { generateUniquePatientId, isValidPatientId, normalizePatientIdInput } from '../utils/patientId';
 
 const RegisterNewChild = ({ token }) => {
   const navigate = useNavigate();
+  const [schoolIsOtherMode, setSchoolIsOtherMode] = useState(false);
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -17,9 +24,13 @@ const RegisterNewChild = ({ token }) => {
     sex: '',
     school: '',
     grade: '',
+    class: '',
     barangay: '',
     guardianPhone: '',
-    notes: ''
+    messenger: '',
+    priority: 'P2',
+    notes: '',
+    patientId: ''
   });
   const [duplicates, setDuplicates] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -49,8 +60,38 @@ const RegisterNewChild = ({ token }) => {
 
   const handleChange = (e) => {
     const { name, value, type } = e.target;
+    if (name === 'patientId') {
+      setFormData((prev) => ({ ...prev, patientId: normalizePatientIdInput(value) }));
+      return;
+    }
     const next = (type === 'text' || type === 'textarea') && name !== 'notes' ? String(value).toUpperCase() : value;
     setFormData(prev => ({ ...prev, [name]: next }));
+  };
+
+  const handleGeneratePatientId = async () => {
+    try {
+      const all = await getAllChildren();
+      const used = new Set(
+        all.map((c) => (c.patientId || '').trim()).filter((p) => /^\d{6}$/.test(p))
+      );
+      setFormData((prev) => ({ ...prev, patientId: generateUniquePatientId(used) }));
+    } catch (err) {
+      notifyError(err?.message || 'Could not generate Patient ID');
+    }
+  };
+
+  const handleSchoolSelectChange = (e) => {
+    const v = e.target.value;
+    if (v === CHILD_SCHOOL_UI_OTHER) {
+      setSchoolIsOtherMode(true);
+      setFormData((prev) => ({ ...prev, school: '' }));
+    } else if (v) {
+      setSchoolIsOtherMode(false);
+      setFormData((prev) => ({ ...prev, school: v }));
+    } else {
+      setSchoolIsOtherMode(false);
+      setFormData((prev) => ({ ...prev, school: '' }));
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -59,6 +100,28 @@ const RegisterNewChild = ({ token }) => {
     setSaving(true);
 
     try {
+      const schoolTrim = (formData.school || '').trim();
+      if (!schoolTrim) {
+        notifyError('School is required.');
+        setSaving(false);
+        return;
+      }
+
+      const patientIdTrim = (formData.patientId || '').trim();
+      if (!isValidPatientId(patientIdTrim)) {
+        notifyError('Patient ID must be exactly 6 digits.');
+        setSaving(false);
+        return;
+      }
+      const existingChildren = await getAllChildren();
+      if (
+        existingChildren.some((c) => (c.patientId || '').trim() === patientIdTrim)
+      ) {
+        notifyError('Patient ID already in use. Choose another or generate.');
+        setSaving(false);
+        return;
+      }
+
       const childId = `child-${crypto.randomUUID()}`;
       const now = new Date().toISOString();
       const username = localStorage.getItem('username') || 'unknown';
@@ -73,10 +136,14 @@ const RegisterNewChild = ({ token }) => {
         dob: formData.dob || null,
         age: formData.dob ? null : (formData.age ? parseInt(formData.age) : null),
         sex: formData.sex,
-        school: formData.school.trim(),
+        patientId: patientIdTrim,
+        school: schoolTrim,
         grade: formData.grade.trim() || null,
+        class: formData.class.trim() || null,
         barangay: formData.barangay.trim(),
         guardianPhone: formData.guardianPhone.trim() || null,
+        messenger: formData.messenger.trim() || null,
+        priority: formData.priority || 'P2',
         notes: formData.notes.trim() || null,
         createdBy: username,
         updatedBy: username,
@@ -95,9 +162,11 @@ const RegisterNewChild = ({ token }) => {
         }
       }
 
-      navigate(`/child/${childId}`);
+      notifySuccess('Child registered.');
+      navigate(`/children/${childId}`);
     } catch (err) {
       setError(err.message);
+      notifyError(err?.message || 'Failed to register child');
     } finally {
       setSaving(false);
     }
@@ -119,7 +188,7 @@ const RegisterNewChild = ({ token }) => {
 
       <div style={{ marginBottom: '16px' }}>
         <Link
-          to="/search"
+          to="/children"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -139,10 +208,14 @@ const RegisterNewChild = ({ token }) => {
           <strong>⚠️ Possible Duplicate Detected:</strong>
           <ul style={{ marginTop: '8px', marginLeft: '20px' }}>
             {duplicates.map(dup => (
-              <li key={dup.childId}>
-                {formatChildDisplayName(dup)} - {dup.school}
-                {dup.dob && ` (DOB: ${formatDate(dup.dob)})`}
-                {(getAgeFromDOB(dup.dob) != null || dup.age != null) && ` (Age: ${getAgeFromDOB(dup.dob) ?? dup.age} years)`}
+              <li key={dup.childId} style={{ marginBottom: '10px' }}>
+                <PatientNameBlock child={dup} nameTag="div" />
+                <div style={{ fontSize: '13px', color: 'var(--color-muted)', marginTop: '4px' }}>
+                  {dup.school}
+                  {dup.dob && ` · DOB ${formatDate(dup.dob)}`}
+                  {(getAgeFromDOB(dup.dob) != null || dup.age != null) &&
+                    ` · Age ${getAgeFromDOB(dup.dob) ?? dup.age} years`}
+                </div>
               </li>
             ))}
           </ul>
@@ -173,6 +246,35 @@ const RegisterNewChild = ({ token }) => {
               onChange={handleChange}
               required
             />
+          </div>
+
+          <div className="form-group">
+            <label>Patient ID * (6 digits)</label>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch', flexWrap: 'wrap' }}>
+              <input
+                type="text"
+                inputMode="numeric"
+                name="patientId"
+                autoComplete="off"
+                value={formData.patientId}
+                onChange={handleChange}
+                placeholder="000000"
+                maxLength={6}
+                required
+                style={{ flex: '1 1 140px', minWidth: 0 }}
+              />
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => void handleGeneratePatientId()}
+                style={{ flexShrink: 0 }}
+              >
+                Generate
+              </button>
+            </div>
+            <p style={{ margin: '8px 0 0', fontSize: '12px', color: 'var(--color-muted)' }}>
+              Enter a unique 6-digit ID or tap Generate to pick one not already in use.
+            </p>
           </div>
 
           <div className="form-group">
@@ -220,13 +322,38 @@ const RegisterNewChild = ({ token }) => {
 
           <div className="form-group">
             <label>School *</label>
-            <input
-              type="text"
-              name="school"
-              value={formData.school}
-              onChange={handleChange}
+            <select
+              value={
+                CHILD_SCHOOL_PRESETS.includes(String(formData.school || '').trim())
+                  ? String(formData.school || '').trim()
+                  : schoolIsOtherMode
+                    ? CHILD_SCHOOL_UI_OTHER
+                    : ''
+              }
+              onChange={handleSchoolSelectChange}
               required
-            />
+            >
+              <option value="" disabled>
+                Select school
+              </option>
+              {CHILD_SCHOOL_PRESETS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+              <option value={CHILD_SCHOOL_UI_OTHER}>Others</option>
+            </select>
+            {schoolIsOtherMode ? (
+              <input
+                type="text"
+                name="school"
+                value={formData.school}
+                onChange={handleChange}
+                placeholder="School name"
+                required
+                style={{ marginTop: '10px' }}
+              />
+            ) : null}
           </div>
 
           <div className="form-group">
@@ -251,6 +378,17 @@ const RegisterNewChild = ({ token }) => {
           </div>
 
           <div className="form-group">
+            <label>Class</label>
+            <input
+              type="text"
+              name="class"
+              value={formData.class}
+              onChange={handleChange}
+              placeholder="e.g. A"
+            />
+          </div>
+
+          <div className="form-group">
             <label>Barangay *</label>
             <input
               type="text"
@@ -270,6 +408,27 @@ const RegisterNewChild = ({ token }) => {
               onChange={handleChange}
               placeholder="09123456789"
             />
+          </div>
+
+          <div className="form-group">
+            <label>Messenger</label>
+            <input
+              type="text"
+              name="messenger"
+              value={formData.messenger}
+              onChange={handleChange}
+              placeholder="Optional"
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Priority</label>
+            <select name="priority" value={formData.priority} onChange={handleChange}>
+              <option value="P0">P0</option>
+              <option value="P1">P1</option>
+              <option value="P2">P2</option>
+              <option value="P3">P3</option>
+            </select>
           </div>
 
           <div className="form-group">

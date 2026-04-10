@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import NavBar from '../components/NavBar';
 import PageHeader from '../components/PageHeader';
+import { PatientNameBlock } from '../components/PatientNameBlock';
 import { getHighRiskVisits } from '../db/indexedDB';
-import { formatChildDisplayName } from '../utils/displayName';
 
 const HighRiskList = () => {
   const [visits, setVisits] = useState([]);
@@ -74,13 +74,17 @@ const HighRiskList = () => {
               High priority ({visits.length})
             </h2>
             {visits.map(visit => (
-              <Link key={visit.visitId} to={`/child/${visit.childId}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+              <Link key={visit.visitId} to={`/children/${visit.childId}`} style={{ textDecoration: 'none', color: 'inherit' }}>
                 <div className="card" style={{ cursor: 'pointer', marginBottom: '12px', borderLeft: '4px solid var(--color-accent)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                    <h3 style={{ marginBottom: '8px', flex: 1 }}>
-                      {visit.child ? formatChildDisplayName(visit.child) : 'Unknown Child'}
-                    </h3>
-                    <span style={getTierBadgeStyle(1)}>High priority</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      {visit.child ? (
+                        <PatientNameBlock child={visit.child} nameTag="h3" />
+                      ) : (
+                        <PatientNameBlock name="Unknown Child" nameTag="h3" />
+                      )}
+                    </div>
+                    <span style={{ ...getTierBadgeStyle(1), alignSelf: 'flex-start' }}>High priority</span>
                   </div>
                   <p style={{ color: 'var(--color-muted)', fontSize: '14px', marginBottom: '8px' }}>
                     {formatDate(visit.date)}

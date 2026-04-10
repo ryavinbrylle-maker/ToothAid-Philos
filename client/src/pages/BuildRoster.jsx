@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import NavBar from '../components/NavBar';
 import PageHeader from '../components/PageHeader';
+import { PatientNameBlock } from '../components/PatientNameBlock';
 import { 
   getClinicDay, 
   getHighRiskVisits, 
@@ -16,7 +17,6 @@ import {
   getGraduationOrder
 } from '../db/indexedDB';
 import { getAgeFromDOB } from '../utils/age';
-import { formatChildDisplayName } from '../utils/displayName';
 
 const BuildRoster = ({ token }) => {
   const { clinicDayId } = useParams();
@@ -561,21 +561,18 @@ const BuildRoster = ({ token }) => {
           {rosterChildren.map(({ appointment, child }) => (
             <div key={appointment.appointmentId} className="card" style={{ marginBottom: '8px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ flex: 1 }}>
-                  <h3 style={{ marginBottom: '4px' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {child?.childId ? (
                     <Link
-                      to={child?.childId ? `/child/${child.childId}/visit` : '#'}
-                      style={{
-                        color: 'var(--color-primary)',
-                        textDecoration: 'none',
-                        fontWeight: '600',
-                        cursor: child?.childId ? 'pointer' : 'default'
-                      }}
+                      to={`/children/${child.childId}`}
+                      style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
                     >
-                      {formatChildDisplayName(child) || 'Unknown'}
+                      <PatientNameBlock child={child} />
                     </Link>
-                  </h3>
-                  <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>
+                  ) : (
+                    <PatientNameBlock child={child} name="Unknown" />
+                  )}
+                  <p style={{ color: '#666', fontSize: '14px', margin: '8px 0 0' }}>
                     {appointment.reason.replace('_', ' ')} • {appointment.timeWindow === 'AM' ? 'AM slot' : 
                      appointment.timeWindow === 'PM' ? 'PM slot' : 
                      'Full day'}
@@ -607,8 +604,8 @@ const BuildRoster = ({ token }) => {
               <div key={item.visitId || item.childId} className="card" style={{ marginBottom: '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <h3 style={{ marginBottom: '4px' }}>{formatChildDisplayName(item.child) || 'Unknown'}</h3>
-                    <p style={{ color: '#666', fontSize: '14px', marginBottom: '4px' }}>
+                    <PatientNameBlock child={item.child} nameTag="h3" />
+                    <p style={{ color: '#666', fontSize: '14px', marginBottom: '4px', marginTop: '8px' }}>
                       {item.child?.school || 'No school'} • {item.child?.grade || 'No grade'} • {item.child?.barangay}
                     </p>
                     {item.tierName && (
@@ -719,7 +716,9 @@ const BuildRoster = ({ token }) => {
                 )}
               </div>
             )}
-            <p style={{ margin: '4px 0' }}><strong>Name:</strong> {formatChildDisplayName(viewChildDetail.child)}</p>
+            <div style={{ marginBottom: '12px' }}>
+              <PatientNameBlock child={viewChildDetail.child} nameTag="h3" />
+            </div>
             <p style={{ margin: '4px 0' }}><strong>Sex:</strong> {viewChildDetail.child.sex}</p>
             {viewChildDetail.child.dob && <p style={{ margin: '4px 0' }}><strong>Date of Birth:</strong> {formatDate(viewChildDetail.child.dob)}</p>}
             {(getAgeFromDOB(viewChildDetail.child.dob) != null || viewChildDetail.child.age != null) && (

@@ -4,17 +4,13 @@ import MainLayout from './components/MainLayout';
 import Login from './pages/Login';
 import Home from './pages/Home';
 import SearchChild from './pages/SearchChild';
-import RegisterChild from './pages/RegisterChild';
 import RegisterNewChild from './pages/RegisterNewChild';
 import ChildProfile from './pages/ChildProfile';
 import AddVisit from './pages/AddVisit';
-import HighRiskList from './pages/HighRiskList';
 import Graphs from './pages/Graphs';
-import SyncPage from './pages/SyncPage';
-import ClinicDaysList from './pages/ClinicDaysList';
-import CreateClinicDay from './pages/CreateClinicDay';
-import BuildRoster from './pages/BuildRoster';
-import ClinicDayRoster from './pages/ClinicDayRoster';
+import Schedule from './pages/Schedule';
+import ScheduleDay from './pages/ScheduleDay';
+import AppointmentPage from './pages/AppointmentPage';
 import { performSync, getOutboxOps } from './db/indexedDB';
 import './App.css';
 
@@ -158,52 +154,40 @@ function App() {
               element={<Home setToken={setToken} />}
             />
             <Route
-              path="/search"
+              path="/children"
               element={<SearchChild token={token} />}
             />
             <Route
-              path="/register-child"
+              path="/children/register"
               element={<RegisterNewChild token={token} />}
             />
             <Route
-              path="/register"
-              element={<RegisterChild token={token} />}
-            />
-            <Route
-              path="/child/:childId"
+              path="/children/:childId"
               element={<ChildProfile token={token} />}
             />
             <Route
-              path="/child/:childId/visit"
+              path="/children/:childId/visit-entry/:visitId"
               element={<AddVisit token={token} />}
             />
             <Route
-              path="/high-risk"
-              element={<HighRiskList />}
+              path="/children/:childId/visit-entry"
+              element={<AddVisit token={token} />}
             />
             <Route
-              path="/graphs"
+              path="/children/:childId/appointment"
+              element={<AppointmentPage token={token} />}
+            />
+            <Route
+              path="/reports"
               element={<Graphs />}
             />
             <Route
-              path="/clinic-days"
-              element={<ClinicDaysList />}
+              path="/schedule"
+              element={<Schedule token={token} />}
             />
             <Route
-              path="/create-clinic-day"
-              element={<CreateClinicDay token={token} />}
-            />
-            <Route
-              path="/clinic-days/:clinicDayId/build-roster"
-              element={<BuildRoster token={token} />}
-            />
-            <Route
-              path="/clinic-days/:clinicDayId/roster"
-              element={<ClinicDayRoster token={token} />}
-            />
-            <Route
-              path="/sync"
-              element={<SyncPage token={token} setToken={setToken} />}
+              path="/schedule/:date"
+              element={<ScheduleDay token={token} />}
             />
           </Route>
         </Routes>

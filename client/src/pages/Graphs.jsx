@@ -3,6 +3,7 @@ import { LineChart, Line, BarChart, Bar, PieChart, Pie, XAxis, YAxis, CartesianG
 import NavBar from '../components/NavBar';
 import PageHeader from '../components/PageHeader';
 import { getAllChildren, getAllVisits, getGraduationOrder } from '../db/indexedDB';
+import { performFullSync } from '../db/indexedDB';
 import { 
   groupVisitsByBucket, 
   getLastNBucketsWithEqualIntervals, 
@@ -18,6 +19,9 @@ const Graphs = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const containerRef = useRef(null);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [fullSyncing, setFullSyncing] = useState(false);
+  const [fullSyncMsg, setFullSyncMsg] = useState(null);
   
   // Granularity state - persisted in localStorage
   const [granularity, setGranularity] = useState(() => {
@@ -134,6 +138,17 @@ const Graphs = () => {
       container.removeEventListener('touchend', handleTouchEnd);
     };
   }, [isTransitioning, minSwipeDistance]);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const handleNext = () => {
     const slides = getAvailableSlides();
@@ -1473,34 +1488,14 @@ const Graphs = () => {
             <button
               type="button"
               onClick={() => setExportRange('monthly')}
-              style={{
-                padding: '10px 20px',
-                borderRadius: '999px',
-                border: '1px solid',
-                borderColor: exportRange === 'monthly' ? 'var(--color-primary)' : '#e9ecef',
-                background: '#fff',
-                color: exportRange === 'monthly' ? 'var(--color-primary)' : '#6c757d',
-                fontWeight: '600',
-                fontSize: '14px',
-                cursor: 'pointer'
-              }}
+              className={`chip-toggle${exportRange === 'monthly' ? ' chip-toggle--active' : ''}`}
             >
               Monthly
             </button>
             <button
               type="button"
               onClick={() => setExportRange('yearly')}
-              style={{
-                padding: '10px 20px',
-                borderRadius: '999px',
-                border: '1px solid',
-                borderColor: exportRange === 'yearly' ? 'var(--color-primary)' : '#e9ecef',
-                background: '#fff',
-                color: exportRange === 'yearly' ? 'var(--color-primary)' : '#6c757d',
-                fontWeight: '600',
-                fontSize: '14px',
-                cursor: 'pointer'
-              }}
+              className={`chip-toggle${exportRange === 'yearly' ? ' chip-toggle--active' : ''}`}
             >
               Yearly
             </button>
@@ -1740,6 +1735,78 @@ const Graphs = () => {
       }}>
         Swipe to see more trends
       </p>
+
+      {/* Advanced Setting */}
+      <div style={{ marginBottom: '28px' }}>
+        <h2 style={{
+          fontSize: '14px',
+          fontWeight: '600',
+          color: 'var(--color-muted)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px',
+          marginBottom: '12px',
+          paddingLeft: '4px'
+        }}>
+          Advanced Setting
+        </h2>
+
+        <div style={{
+          background: '#f8f9fa',
+          border: '1px solid #e9ecef',
+          borderRadius: '12px',
+          padding: '14px 16px'
+        }}>
+          <div style={{ fontSize: '13px', color: '#6c757d', marginBottom: '10px' }}>
+            Full sync will re-pull all data from server (useful for demo / dev).
+          </div>
+
+          {fullSyncMsg && (
+            <div style={{ fontSize: '13px', color: '#6c757d', marginBottom: '10px' }}>
+              {fullSyncMsg}
+            </div>
+          )}
+
+          <button
+            type="button"
+            disabled={!isOnline || fullSyncing}
+            onClick={async () => {
+              const token = localStorage.getItem('token');
+              if (!token) {
+                setFullSyncMsg('Not logged in');
+                return;
+              }
+              setFullSyncing(true);
+              setFullSyncMsg(null);
+              try {
+                const result = await performFullSync(token);
+                if (result?.success) {
+                  setFullSyncMsg(result.message || 'Full sync completed');
+                } else {
+                  setFullSyncMsg(`Full sync failed: ${result?.error || 'unknown error'}`);
+                }
+              } catch (e) {
+                setFullSyncMsg(`Full sync failed: ${e?.message || 'unknown error'}`);
+              } finally {
+                setFullSyncing(false);
+              }
+            }}
+            style={{
+              width: '100%',
+              padding: '14px 20px',
+              borderRadius: 'var(--radius-btn)',
+              border: 'none',
+              background: 'var(--color-accent)',
+              color: '#fff',
+              fontSize: '15px',
+              fontWeight: '600',
+              cursor: !isOnline || fullSyncing ? 'not-allowed' : 'pointer',
+              opacity: !isOnline || fullSyncing ? 0.7 : 1
+            }}
+          >
+            {fullSyncing ? 'Full Syncing…' : 'Full Sync'}
+          </button>
+        </div>
+      </div>
 
       <NavBar />
     </div>

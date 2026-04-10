@@ -60,7 +60,7 @@ const ClinicDaysList = () => {
 
   return (
     <div className="container" style={{ overflowX: 'hidden' }}>
-<PageHeader title="Clinic Days" subtitle="Manage scheduled clinic days" icon="clinic" />
+<PageHeader title="Schedule" subtitle="Manage clinic schedule" icon="clinic" />
 
       <Link to="/create-clinic-day" className="btn btn-primary" style={{ marginBottom: '16px', display: 'block', textAlign: 'center' }}>
         + Create New Clinic Day
@@ -82,7 +82,7 @@ const ClinicDaysList = () => {
                   : 'var(--color-success)';
             
             return (
-              <Link key={day.clinicDayId} to={`/clinic-days/${day.clinicDayId}/roster`} style={{ textDecoration: 'none', color: 'inherit' }}>
+              <Link key={day.clinicDayId} to={`/schedule/${day.clinicDayId}`} style={{ textDecoration: 'none', color: 'inherit' }}>
                 <div className="card" style={{ cursor: 'pointer', marginBottom: '12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                     <h3 style={{ marginBottom: '4px' }}>

@@ -21,7 +21,7 @@ const clinicDaySchema = new mongoose.Schema({
   capacity: {
     type: Number,
     required: true,
-    min: 1
+    min: 0
   },
   amCapacity: {
     type: Number,

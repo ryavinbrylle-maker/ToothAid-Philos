@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import NavBar from '../components/NavBar';
 import PageHeader from '../components/PageHeader';
+import { PatientNameBlock } from '../components/PatientNameBlock';
 import DateInput from '../components/DateInput';
 import { searchChildren, getAllChildren, addVisit, addToOutbox, performSync } from '../db/indexedDB';
-import { formatChildDisplayName } from '../utils/displayName';
 import { TREATMENT_OPTIONS, EXTRACTION_CHOICES, buildTreatmentTypesArray } from '../utils/treatmentTypes';
 
 const RegisterChild = ({ token }) => {
@@ -206,8 +206,8 @@ const RegisterChild = ({ token }) => {
                   style={{ cursor: 'pointer' }}
                   onClick={() => handleSelectChild(child)}
                 >
-                  <h3 style={{ marginBottom: '8px' }}>{formatChildDisplayName(child)}</h3>
-                  <p style={{ color: '#666', fontSize: '14px', marginBottom: '4px' }}>
+                  <PatientNameBlock child={child} nameTag="h3" />
+                  <p style={{ color: '#666', fontSize: '14px', marginBottom: '4px', marginTop: '8px' }}>
                     {child.school} • {child.barangay}
                   </p>
                   {child.grade && (
@@ -246,9 +246,9 @@ const RegisterChild = ({ token }) => {
               alignItems: 'center'
             }}
           >
-            <div>
-              <h3 style={{ marginBottom: '4px' }}>{formatChildDisplayName(selectedChild)}</h3>
-              <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <PatientNameBlock child={selectedChild} nameTag="h3" />
+              <p style={{ color: '#666', fontSize: '14px', margin: '8px 0 0' }}>
                 {selectedChild.school} • {selectedChild.barangay}
               </p>
             </div>

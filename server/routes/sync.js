@@ -48,6 +48,8 @@ router.post('/push', authenticateToken, async (req, res) => {
           const updatedBy = existing ? username : (p.updatedBy || createdBy);
           // Build explicit update so every schema field (including notes) is written to MongoDB
           const fullNameFromParts = [p.firstName, p.lastName].filter(Boolean).join(' ').trim();
+          const patientIdRaw = p.patientId != null ? String(p.patientId).trim() : '';
+          const patientIdVal = /^\d{6}$/.test(patientIdRaw) ? patientIdRaw : null;
           const childData = {
             childId: p.childId,
             fullName: fullNameFromParts || p.fullName,
@@ -58,17 +60,43 @@ router.post('/push', authenticateToken, async (req, res) => {
             sex: p.sex,
             school: p.school,
             grade: p.grade != null && p.grade !== '' ? p.grade : null,
+            class: p.class != null && p.class !== '' ? p.class : null,
             barangay: p.barangay,
             guardianPhone: p.guardianPhone != null && p.guardianPhone !== '' ? p.guardianPhone : null,
+            messenger: p.messenger != null && p.messenger !== '' ? p.messenger : null,
+            priority: p.priority != null && p.priority !== '' ? p.priority : 'P2',
+            consentGeneralReceivedAt: p.consentGeneralReceivedAt ? new Date(p.consentGeneralReceivedAt) : null,
+            consentSpecific: Array.isArray(p.consentSpecific)
+              ? p.consentSpecific
+                  .filter(e => e && typeof e === 'object')
+                  .map(e => ({
+                    procedure: e.procedure != null ? String(e.procedure).trim() : '',
+                    date: e.date ? new Date(e.date) : null
+                  }))
+                  .filter(e => e.procedure !== '')
+              : [],
             notes: p.notes != null && p.notes !== '' ? p.notes : null,
+            toothStates:
+              p.toothStates != null && typeof p.toothStates === 'object' && !Array.isArray(p.toothStates)
+                ? p.toothStates
+                : existing?.toothStates != null && typeof existing.toothStates === 'object'
+                  ? existing.toothStates
+                  : {},
             createdBy,
             updatedBy,
             createdAt: p.createdAt ? new Date(p.createdAt) : new Date(),
             updatedAt: new Date()
           };
+          if (patientIdVal) {
+            childData.patientId = patientIdVal;
+          }
+          const updateOps = { $set: childData };
+          if (!patientIdVal) {
+            updateOps.$unset = { patientId: '' };
+          }
           await Child.findOneAndUpdate(
             { childId: p.childId },
-            childData,
+            updateOps,
             { upsert: true, new: true }
           );
         } else if (op.action === 'ADD_VISIT') {
@@ -83,7 +111,27 @@ router.post('/push', authenticateToken, async (req, res) => {
             decayedTeeth: payload.decayedTeeth !== undefined ? payload.decayedTeeth : null,
             missingTeeth: payload.missingTeeth !== undefined ? payload.missingTeeth : null,
             filledTeeth: payload.filledTeeth !== undefined ? payload.filledTeeth : null,
-            treatmentTypes: normalizeTreatmentTypes(payload.treatmentTypes),
+            dentition: payload.dentition != null && payload.dentition !== '' ? String(payload.dentition) : null,
+            toothRecords:
+              payload.toothRecords != null &&
+              typeof payload.toothRecords === 'object' &&
+              !Array.isArray(payload.toothRecords)
+                ? payload.toothRecords
+                : null,
+            toothExaminations: Array.isArray(payload.toothExaminations) ? payload.toothExaminations : null,
+            treatmentTypes: normalizeTreatmentTypes(
+              Array.isArray(payload.treatmentTypes) && payload.treatmentTypes.length > 0
+                ? payload.treatmentTypes
+                : payload.treatments
+            ),
+            treatments: Array.isArray(payload.treatments)
+              ? payload.treatments.filter((t) => typeof t === 'string').map((t) => t.trim()).filter(Boolean)
+              : null,
+            medications: Array.isArray(payload.medications) ? payload.medications : null,
+            chiefComplaint:
+              payload.chiefComplaint != null && String(payload.chiefComplaint).trim() !== ''
+                ? String(payload.chiefComplaint).trim()
+                : null,
             notes: payload.notes || null,
             createdBy: payload.createdBy || username,
             createdAt: payload.createdAt || new Date()
@@ -162,6 +210,7 @@ router.post('/push', authenticateToken, async (req, res) => {
         } else if (op.action === 'UPDATE_VISIT') {
           // Update existing visit; always sync treatment data
           const payload = op.payload;
+          const existingVisit = await Visit.findOne({ visitId: payload.visitId }).lean();
           const visitData = {
             visitId: payload.visitId,
             childId: payload.childId,
@@ -171,7 +220,48 @@ router.post('/push', authenticateToken, async (req, res) => {
             decayedTeeth: payload.decayedTeeth !== undefined ? payload.decayedTeeth : null,
             missingTeeth: payload.missingTeeth !== undefined ? payload.missingTeeth : null,
             filledTeeth: payload.filledTeeth !== undefined ? payload.filledTeeth : null,
-            treatmentTypes: normalizeTreatmentTypes(payload.treatmentTypes),
+            dentition:
+              payload.dentition != null && payload.dentition !== ''
+                ? String(payload.dentition)
+                : existingVisit?.dentition ?? null,
+            toothRecords:
+              payload.toothRecords != null &&
+              typeof payload.toothRecords === 'object' &&
+              !Array.isArray(payload.toothRecords)
+                ? payload.toothRecords
+                : existingVisit?.toothRecords ?? null,
+            toothExaminations: Array.isArray(payload.toothExaminations)
+              ? payload.toothExaminations
+              : Array.isArray(existingVisit?.toothExaminations)
+                ? existingVisit.toothExaminations
+                : null,
+            treatmentTypes: normalizeTreatmentTypes(
+              Array.isArray(payload.treatmentTypes) && payload.treatmentTypes.length > 0
+                ? payload.treatmentTypes
+                : payload.treatments ?? existingVisit?.treatmentTypes
+            ),
+            treatments:
+              payload.treatments !== undefined
+                ? Array.isArray(payload.treatments)
+                  ? payload.treatments.filter((t) => typeof t === 'string').map((t) => t.trim()).filter(Boolean)
+                  : null
+                : Array.isArray(existingVisit?.treatments)
+                  ? existingVisit.treatments
+                  : null,
+            medications:
+              payload.medications !== undefined
+                ? Array.isArray(payload.medications)
+                  ? payload.medications
+                  : null
+                : Array.isArray(existingVisit?.medications)
+                  ? existingVisit.medications
+                  : null,
+            chiefComplaint:
+              payload.chiefComplaint !== undefined
+                ? payload.chiefComplaint != null && String(payload.chiefComplaint).trim() !== ''
+                  ? String(payload.chiefComplaint).trim()
+                  : null
+                : existingVisit?.chiefComplaint ?? null,
             notes: payload.notes || null,
             updatedBy: payload.updatedBy || username,
             updatedAt: new Date()

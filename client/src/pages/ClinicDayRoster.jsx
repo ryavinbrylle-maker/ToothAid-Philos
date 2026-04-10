@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import NavBar from '../components/NavBar';
 import PageHeader from '../components/PageHeader';
+import { PatientNameBlock } from '../components/PatientNameBlock';
 import { 
   getClinicDay, 
   getAppointmentsByClinicDay,
@@ -12,7 +13,6 @@ import {
   addToOutbox,
   performSync
 } from '../db/indexedDB';
-import { formatChildDisplayName } from '../utils/displayName';
 
 const ClinicDayRoster = ({ token }) => {
   const { clinicDayId } = useParams();
@@ -30,7 +30,7 @@ const ClinicDayRoster = ({ token }) => {
     const loadData = async () => {
       const day = await getClinicDay(clinicDayId);
       if (!day) {
-        navigate('/clinic-days');
+        navigate('/schedule');
         return;
       }
       setClinicDay(day);
@@ -317,21 +317,18 @@ const ClinicDayRoster = ({ token }) => {
           {appointmentsWithChildren.map(({ appointment, child }) => (
             <div key={appointment.appointmentId} className="card" style={{ marginBottom: '12px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                <div style={{ flex: 1 }}>
-                  <h3 style={{ marginBottom: '4px' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {child?.childId ? (
                     <Link
-                      to={child?.childId ? `/child/${child.childId}/visit` : '#'}
-                      style={{
-                        color: 'var(--color-primary)',
-                        textDecoration: 'none',
-                        fontWeight: '600',
-                        cursor: child?.childId ? 'pointer' : 'default'
-                      }}
+                      to={`/children/${child.childId}/visit-entry`}
+                      style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
                     >
-                      {formatChildDisplayName(child) || 'Unknown'}
+                      <PatientNameBlock child={child} />
                     </Link>
-                  </h3>
-                  <p style={{ color: '#666', fontSize: '14px', marginBottom: '4px' }}>
+                  ) : (
+                    <PatientNameBlock child={child} name="Unknown" />
+                  )}
+                  <p style={{ color: '#666', fontSize: '14px', marginBottom: '4px', marginTop: '8px' }}>
                     {appointment.timeWindow === 'AM' ? 'AM slot' : 
                      appointment.timeWindow === 'PM' ? 'PM slot' : 
                      'Full day'} • {appointment.reason.replace('_', ' ')}
@@ -430,10 +427,10 @@ const ClinicDayRoster = ({ token }) => {
         </button>
         <button
           className="btn btn-secondary"
-          onClick={() => navigate('/clinic-days')}
+          onClick={() => navigate('/schedule')}
           style={{ width: '100%' }}
         >
-          Back to Clinic Days
+          Back to Schedule
         </button>
       </div>
 
