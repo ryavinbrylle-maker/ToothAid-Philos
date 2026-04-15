@@ -37,6 +37,66 @@ const appointmentSchema = new mongoose.Schema({
     default: 'SCHEDULED',
     index: true
   },
+  statusChangedAt: {
+    type: Date,
+    default: null
+  },
+  statusChangedBy: {
+    type: String,
+    default: null
+  },
+  statusReason: {
+    type: String,
+    default: null
+  },
+  followUpNeeded: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+  followUpDueAt: {
+    type: Date,
+    default: null
+  },
+  followUps: {
+    type: [
+      {
+        reminderId: { type: String, required: true },
+        type: { type: String, default: 'REMINDER' },
+        reason: { type: String, default: null },
+        dueAt: { type: Date, default: null },
+        createdAt: { type: Date, default: Date.now },
+        createdBy: { type: String, default: null },
+        completedAt: { type: Date, default: null },
+        completedBy: { type: String, default: null }
+      }
+    ],
+    default: []
+  },
+  contactLogs: {
+    type: [
+      {
+        contactId: { type: String, required: true },
+        channel: { type: String, default: 'SMS' },
+        direction: { type: String, default: 'OUTBOUND' },
+        outcome: { type: String, default: null },
+        note: { type: String, default: null },
+        createdAt: { type: Date, default: Date.now },
+        createdBy: { type: String, default: null }
+      }
+    ],
+    default: []
+  },
+  rescheduledFromAppointmentId: {
+    type: String,
+    default: null,
+    index: true
+  },
+  rescheduledToAppointmentId: {
+    type: String,
+    default: null,
+    index: true
+  },
   /** Display order within the same clinicDayId + timeWindow (0-based). */
   order: {
     type: Number,
@@ -75,6 +135,12 @@ appointmentSchema.pre('save', function(next) {
   if (this.createdAt && typeof this.createdAt === 'string') {
     this.createdAt = new Date(this.createdAt);
   }
+  if (this.statusChangedAt && typeof this.statusChangedAt === 'string') {
+    this.statusChangedAt = new Date(this.statusChangedAt);
+  }
+  if (this.followUpDueAt && typeof this.followUpDueAt === 'string') {
+    this.followUpDueAt = new Date(this.followUpDueAt);
+  }
   next();
 });
 
@@ -82,6 +148,12 @@ appointmentSchema.pre('save', function(next) {
 appointmentSchema.pre(['findOneAndUpdate', 'updateOne'], function(next) {
   if (this._update && this._update.createdAt && typeof this._update.createdAt === 'string') {
     this._update.createdAt = new Date(this._update.createdAt);
+  }
+  if (this._update && this._update.statusChangedAt && typeof this._update.statusChangedAt === 'string') {
+    this._update.statusChangedAt = new Date(this._update.statusChangedAt);
+  }
+  if (this._update && this._update.followUpDueAt && typeof this._update.followUpDueAt === 'string') {
+    this._update.followUpDueAt = new Date(this._update.followUpDueAt);
   }
   next();
 });
