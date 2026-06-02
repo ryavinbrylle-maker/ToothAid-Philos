@@ -6,6 +6,7 @@ const parentFormTokenSchema = new mongoose.Schema(
     childId: { type: String, default: null, index: true },
     mode: { type: String, enum: ['update', 'create'], default: 'update', index: true },
     patientName: { type: String, trim: true, default: null },
+    patientId: { type: String, trim: true, default: null },
     firstName: { type: String, trim: true, default: null },
     lastName: { type: String, trim: true, default: null },
     /** Keys the parent is allowed to edit (boolean map). */

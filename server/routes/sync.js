@@ -172,6 +172,10 @@ router.post('/push', authenticateToken, async (req, res) => {
                 ? String(payload.chiefComplaint).trim()
                 : null,
             notes: payload.notes || null,
+            behaviourFrankl:
+              payload.behaviourFrankl != null && payload.behaviourFrankl !== ''
+                ? Number(payload.behaviourFrankl)
+                : null,
             requiresFollowUp: payload.requiresFollowUp === true || payload.requiresFollowUp === 'true',
             followUpPriority:
               payload.requiresFollowUp === true || payload.requiresFollowUp === 'true'
@@ -333,6 +337,12 @@ router.post('/push', authenticateToken, async (req, res) => {
                   : null
                 : existingVisit?.chiefComplaint ?? null,
             notes: payload.notes || null,
+            behaviourFrankl:
+              payload.behaviourFrankl !== undefined
+                ? payload.behaviourFrankl != null && payload.behaviourFrankl !== ''
+                  ? Number(payload.behaviourFrankl)
+                  : null
+                : existingVisit?.behaviourFrankl ?? null,
             requiresFollowUp:
               payload.requiresFollowUp !== undefined
                 ? payload.requiresFollowUp === true || payload.requiresFollowUp === 'true'

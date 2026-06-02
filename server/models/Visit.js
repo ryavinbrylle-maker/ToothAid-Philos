@@ -87,6 +87,10 @@ const visitSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  behaviourFrankl: {
+    type: Number,
+    default: null
+  },
   requiresFollowUp: {
     type: Boolean,
     default: false

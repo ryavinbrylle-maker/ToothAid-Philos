@@ -29,10 +29,17 @@ import { API_BASE_URL } from '../config';
 import { PARENT_FORM_FIELD_DEFS, PARENT_FORM_FIELD_GROUPS } from '../constants/parentFormFields';
 import EditableChipList from '../components/EditableChipList';
 import { getFollowUpTimingLabel, visitRequiresFollowUp } from '../utils/followUpTiming';
+import { TREATMENT_OPTIONS } from '../utils/treatmentTypes';
 
 const MEDICAL_ALLERGY_PRESETS = ['None known', 'Penicillin', 'Shellfish', 'Latex'];
 const MEDICAL_HISTORY_PRESETS = ['G6PD', 'Hospitalization', 'Blue Baby', 'Asthma'];
+const CONSENT_PROCEDURE_OPTIONS = TREATMENT_OPTIONS.map((option) => option.label);
 const GRADE_OPTIONS = ['Kindergarten', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Graduated', 'Teacher'];
+const GENDER_OPTIONS = [
+  { value: 'M', label: 'Male' },
+  { value: 'F', label: 'Female' },
+  { value: 'Other', label: 'Other' }
+];
 
 const formSectionStyle = {
   border: '1px solid #e5e7eb',
@@ -59,6 +66,37 @@ import {
   getPersistedToothCondition,
   buildVisitTeethRows
 } from '../utils/toothChart';
+
+const BEHAVIOUR_BADGE_COLORS = {
+  1: { bg: '#fee2e2', color: '#991b1b', border: '#fecaca' },
+  2: { bg: '#ffedd5', color: '#9a3412', border: '#fed7aa' },
+  3: { bg: '#fef9c3', color: '#854d0e', border: '#fde68a' },
+  4: { bg: '#dcfce7', color: '#166534', border: '#bbf7d0' }
+};
+
+const BehaviourBadge = ({ value }) => {
+  const n = Number(value);
+  const style = BEHAVIOUR_BADGE_COLORS[n];
+  if (!style) return null;
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        padding: '2px 8px',
+        borderRadius: 999,
+        border: `1px solid ${style.border}`,
+        background: style.bg,
+        color: style.color,
+        fontSize: 12,
+        fontWeight: 800,
+        lineHeight: 1.4
+      }}
+    >
+      F{n}
+    </span>
+  );
+};
 
 const formatMedicationLine = (m) => {
   if (!m || typeof m !== 'object') return '';
@@ -127,10 +165,13 @@ const VisitHistoryEntryDetail = ({ visit }) => {
 
   return (
     <div style={{ marginTop: '10px' }}>
-      {chiefText && (
+      {(chiefText || visit.behaviourFrankl != null) && (
         <p style={{ margin: '0 0 10px', fontSize: '14px', lineHeight: 1.45, color: '#374151' }}>
-          <strong>Chief complaint: </strong>
-          <span style={{ color: '#4b5563', fontWeight: 400 }}>{chiefText}</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <strong>Chief complaint: </strong>
+            <BehaviourBadge value={visit.behaviourFrankl} />
+          </span>{' '}
+          <span style={{ color: '#4b5563', fontWeight: 400 }}>{chiefText || '—'}</span>
         </p>
       )}
       {teethRows.length > 0 ? (
@@ -354,6 +395,7 @@ const ChildProfile = ({ token }) => {
   const [showConsentEditor, setShowConsentEditor] = useState(false);
   const [consentGeneralDate, setConsentGeneralDate] = useState(''); // yyyy-mm-dd
   const [consentSpecific, setConsentSpecific] = useState([]); // [{ procedure, date }]
+  const [consentSpecificDate, setConsentSpecificDate] = useState('');
   
   // Delete child confirmation
   const [showDeleteChildConfirm, setShowDeleteChildConfirm] = useState(false);
@@ -451,7 +493,7 @@ const ChildProfile = ({ token }) => {
     spedCategory: '',
     spedOtherDetail: '',
     medicalHistory: '',
-    behaviourFrankl: '',
+    weight: '',
     otherNotes: ''
   });
 
@@ -459,6 +501,7 @@ const ChildProfile = ({ token }) => {
     const general = formatDateForInput(child?.consentGeneralReceivedAt);
     const specific = Array.isArray(child?.consentSpecific) ? child.consentSpecific : [];
     setConsentGeneralDate(general);
+    setConsentSpecificDate(formatDateForInput(specific.find((e) => e?.date)?.date) || '');
     setConsentSpecific(
       specific
         .filter(e => e && typeof e === 'object')
@@ -468,6 +511,23 @@ const ChildProfile = ({ token }) => {
         }))
     );
     setShowConsentEditor(true);
+  };
+
+  const specificConsentActiveMap = Object.fromEntries(
+    (consentSpecific || [])
+      .map((row) => String(row?.procedure || '').trim())
+      .filter(Boolean)
+      .map((procedure) => [procedure, true])
+  );
+
+  const toggleSpecificConsentProcedure = (procedure) => {
+    const label = String(procedure || '').trim();
+    if (!label) return;
+    setConsentSpecific((prev) => {
+      const exists = prev.some((row) => String(row?.procedure || '').trim() === label);
+      if (exists) return prev.filter((row) => String(row?.procedure || '').trim() !== label);
+      return [...prev, { procedure: label, date: consentSpecificDate || '' }];
+    });
   };
 
   const saveConsent = async () => {
@@ -480,10 +540,10 @@ const ChildProfile = ({ token }) => {
         ...child,
         consentGeneralReceivedAt: consentGeneralDate ? new Date(consentGeneralDate).toISOString() : null,
         consentSpecific: (consentSpecific || [])
-          .filter(e => (e.procedure || '').trim() || (e.date || '').trim())
+          .filter(e => (e.procedure || '').trim())
           .map(e => ({
             procedure: (e.procedure || '').trim(),
-            date: e.date ? new Date(e.date).toISOString() : null
+            date: consentSpecificDate ? new Date(consentSpecificDate).toISOString() : null
           })),
         updatedBy: username,
         updatedAt: now
@@ -546,7 +606,7 @@ const ChildProfile = ({ token }) => {
         spedCategory: mc.spedCategory != null ? String(mc.spedCategory) : '',
         spedOtherDetail: mc.spedOtherDetail != null ? String(mc.spedOtherDetail) : '',
         medicalHistory: mc.medicalHistory != null ? String(mc.medicalHistory) : '',
-        behaviourFrankl: mc.behaviourFrankl != null && mc.behaviourFrankl !== '' ? String(mc.behaviourFrankl) : '',
+        weight: mc.weight != null ? String(mc.weight) : '',
         otherNotes: mc.otherNotes != null ? String(mc.otherNotes) : ''
       }
     });
@@ -650,6 +710,11 @@ const ChildProfile = ({ token }) => {
         setSavingChild(false);
         return;
       }
+      if (!childFormData.sex) {
+        notifyError('Gender is required.');
+        setSavingChild(false);
+        return;
+      }
 
       const pidRaw = (childFormData.patientId || '').trim();
       let patientIdOut = null;
@@ -705,17 +770,13 @@ const ChildProfile = ({ token }) => {
       };
 
       const rawMc = childFormData.medicalCondition || {};
-      const bf =
-        rawMc.behaviourFrankl !== '' && rawMc.behaviourFrankl != null
-          ? parseInt(String(rawMc.behaviourFrankl), 10)
-          : null;
       const sped = String(rawMc.spedCategory || '').trim().toLowerCase();
       updatedChild.medicalCondition = {
         allergy: (rawMc.allergy || '').trim() || null,
         spedCategory: ['deaf', 'autism', 'others'].includes(sped) ? sped : null,
         spedOtherDetail: (rawMc.spedOtherDetail || '').trim() || null,
         medicalHistory: (rawMc.medicalHistory || '').trim() || null,
-        behaviourFrankl: Number.isFinite(bf) && bf >= 1 && bf <= 4 ? bf : null,
+        weight: (rawMc.weight || '').trim() || null,
         otherNotes: (rawMc.otherNotes || '').trim() || null
       };
 
@@ -994,11 +1055,26 @@ const ChildProfile = ({ token }) => {
 
             <div className="form-group">
               <label>Gender *</label>
-              <select name="sex" value={childFormData.sex} onChange={handleChildFormChange} required>
-                <option value="" disabled>Select Gender</option>
-                <option value="M">Male</option>
-                <option value="F">Female</option>
-              </select>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {GENDER_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setChildFormData((prev) => ({ ...prev, sex: opt.value }))}
+                    style={{
+                      flex: '1 1 96px',
+                      padding: '10px 8px',
+                      borderRadius: 10,
+                      border: childFormData.sex === opt.value ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                      background: childFormData.sex === opt.value ? '#eff6ff' : '#fff',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="form-group">
@@ -1033,12 +1109,26 @@ const ChildProfile = ({ token }) => {
 
             <div className="form-group">
               <label>Grade</label>
-              <select name="grade" value={childFormData.grade} onChange={handleChildFormChange}>
-                <option value="">Select grade</option>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {GRADE_OPTIONS.map((grade) => (
-                  <option key={grade} value={grade}>{grade}</option>
+                  <button
+                    key={grade}
+                    type="button"
+                    onClick={() => setChildFormData((prev) => ({ ...prev, grade }))}
+                    style={{
+                      flex: '1 1 110px',
+                      padding: '10px 8px',
+                      borderRadius: 10,
+                      border: childFormData.grade === grade ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                      background: childFormData.grade === grade ? '#eff6ff' : '#fff',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {grade}
+                  </button>
                 ))}
-              </select>
+              </div>
             </div>
 
             <div className="form-group">
@@ -1157,38 +1247,17 @@ const ChildProfile = ({ token }) => {
                 </div>
               </div>
               <div className="form-group">
-                <label>Behavior (Frankl scale)</label>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {[1, 2, 3, 4].map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      onClick={() => handleMedicalFormChange('behaviourFrankl', String(n))}
-                      style={{
-                        flex: '1 1 64px',
-                        padding: '10px 8px',
-                        borderRadius: 10,
-                        border:
-                          String(childFormData.medicalCondition?.behaviourFrankl) === String(n)
-                            ? '2px solid #2563eb'
-                            : '1px solid #e5e7eb',
-                        background:
-                          String(childFormData.medicalCondition?.behaviourFrankl) === String(n) ? '#eff6ff' : '#fff',
-                        fontWeight: 700,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => handleMedicalFormChange('behaviourFrankl', '')}
-                    className="btn btn-secondary"
-                    style={{ flex: '1 1 80px' }}
-                  >
-                    Clear
-                  </button>
+                <label>Weight</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={childFormData.medicalCondition?.weight ?? ''}
+                    onChange={(e) => handleMedicalFormChange('weight', e.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                  <span style={{ color: 'var(--color-muted)', fontWeight: 700 }}>klbs</span>
                 </div>
               </div>
             </section>
@@ -1378,54 +1447,29 @@ const ChildProfile = ({ token }) => {
 
             <div style={{ marginTop: '12px' }}>
               <div style={{ fontWeight: 700, marginBottom: '8px' }}>Specific consent</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {consentSpecific.map((row, idx) => (
-                  <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 140px 80px', gap: '8px', alignItems: 'end' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '12px', color: 'var(--color-muted)', marginBottom: '6px' }}>Procedure</label>
-                      <input
-                        type="text"
-                        value={row.procedure}
-                        onChange={(e) => {
-                          const next = [...consentSpecific];
-                          next[idx] = { ...next[idx], procedure: e.target.value };
-                          setConsentSpecific(next);
-                        }}
-                        placeholder="e.g. Extraction"
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '12px', color: 'var(--color-muted)', marginBottom: '6px' }}>Date</label>
-                      <input
-                        type="date"
-                        value={row.date}
-                        onChange={(e) => {
-                          const next = [...consentSpecific];
-                          next[idx] = { ...next[idx], date: e.target.value };
-                          setConsentSpecific(next);
-                        }}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      className="btn"
-                      style={{ background: '#e5e7eb' }}
-                      onClick={() => setConsentSpecific(consentSpecific.filter((_, i) => i !== idx))}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
+              <div className="form-group">
+                <label style={{ display: 'block', fontSize: '12px', color: 'var(--color-muted)', marginBottom: '6px' }}>Date</label>
+                <input
+                  type="date"
+                  value={consentSpecificDate}
+                  onChange={(e) => setConsentSpecificDate(e.target.value)}
+                />
               </div>
-
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{ marginTop: '12px', width: '100%' }}
-                onClick={() => setConsentSpecific([...consentSpecific, { procedure: '', date: '' }])}
-              >
-                + Add specific consent
-              </button>
+              <div style={{ fontSize: '12px', color: 'var(--color-muted)', marginBottom: 6 }}>
+                Procedure (select one or more; long-press to edit shortcuts)
+              </div>
+              <EditableChipList
+                storageKey="toothaid_presets_consent_procedures"
+                defaultList={CONSENT_PROCEDURE_OPTIONS}
+                mode="toggle"
+                activeMap={specificConsentActiveMap}
+                onToggle={toggleSpecificConsentProcedure}
+              />
+              {consentSpecific.length > 0 ? (
+                <div style={{ fontSize: '12px', color: '#4b5563', marginTop: 10 }}>
+                  Selected: {consentSpecific.map((row) => row.procedure).join(', ')}
+                </div>
+              ) : null}
             </div>
 
             <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
@@ -1539,8 +1583,8 @@ const ChildProfile = ({ token }) => {
                     </span>
                   </p>
                   <p style={{ margin: '4px 0' }}>
-                    <strong>Behavior (Frankl):</strong>{' '}
-                    {mc.behaviourFrankl != null && mc.behaviourFrankl !== '' ? mc.behaviourFrankl : '—'}
+                    <strong>Weight:</strong>{' '}
+                    {mc.weight != null && String(mc.weight).trim() !== '' ? `${mc.weight} klbs` : '—'}
                   </p>
                 </div>
               );

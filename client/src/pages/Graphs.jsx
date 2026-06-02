@@ -2,8 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import NavBar from '../components/NavBar';
 import PageHeader from '../components/PageHeader';
-import { addToOutbox, getAllChildren, getAllVisits, getGraduationOrder, performSync, upsertChild } from '../db/indexedDB';
-import { performFullSync } from '../db/indexedDB';
+import { addToOutbox, getAllChildren, getAllVisits, getGraduationOrder, getOutboxOps, performSync, upsertChild } from '../db/indexedDB';
 import { 
   groupVisitsByBucket, 
   getLastNBucketsWithEqualIntervals, 
@@ -30,8 +29,9 @@ const Graphs = () => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const containerRef = useRef(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [fullSyncing, setFullSyncing] = useState(false);
   const [fullSyncMsg, setFullSyncMsg] = useState(null);
+  const [appUpdating, setAppUpdating] = useState(false);
+  const [appUpdateMsg, setAppUpdateMsg] = useState(null);
   const [promotingGrades, setPromotingGrades] = useState(false);
   const [showPromoteGradesConfirm, setShowPromoteGradesConfirm] = useState(false);
   const [dataRefreshKey, setDataRefreshKey] = useState(0);
@@ -290,6 +290,81 @@ const Graphs = () => {
       setFullSyncMsg(`Move all into next grade failed: ${e?.message || 'unknown error'}`);
     } finally {
       setPromotingGrades(false);
+    }
+  };
+
+  const handleAppUpdate = async () => {
+    setAppUpdateMsg(null);
+
+    if (!navigator.onLine) {
+      setAppUpdateMsg('You are offline. Connect to the internet to update the app.');
+      return;
+    }
+
+    if (!('serviceWorker' in navigator)) {
+      setAppUpdateMsg('App update is not supported in this browser.');
+      return;
+    }
+
+    setAppUpdating(true);
+    try {
+      const pendingOps = await getOutboxOps();
+      if (pendingOps.length > 0) {
+        const shouldContinue = window.confirm(
+          `There are ${pendingOps.length} unsynced change${pendingOps.length > 1 ? 's' : ''}. Updating will reload the app. Continue?`
+        );
+        if (!shouldContinue) {
+          setAppUpdateMsg('Update cancelled. Sync your changes first, then try again.');
+          return;
+        }
+      }
+
+      let registration = await navigator.serviceWorker.getRegistration();
+      if (!registration) {
+        registration = await navigator.serviceWorker.register('/sw.js');
+      }
+
+      const reloadWhenActivated = () => {
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          window.location.reload();
+        }, { once: true });
+      };
+
+      if (registration.waiting) {
+        setAppUpdateMsg('New version found. Reloading...');
+        reloadWhenActivated();
+        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        return;
+      }
+
+      setAppUpdateMsg('Checking for app update...');
+      await registration.update();
+
+      if (registration.waiting) {
+        setAppUpdateMsg('New version found. Reloading...');
+        reloadWhenActivated();
+        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        return;
+      }
+
+      const installingWorker = registration.installing;
+      if (installingWorker) {
+        setAppUpdateMsg('New version found. Preparing update...');
+        installingWorker.addEventListener('statechange', () => {
+          if (installingWorker.state === 'installed' && registration.waiting) {
+            setAppUpdateMsg('New version ready. Reloading...');
+            reloadWhenActivated();
+            registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+          }
+        });
+        return;
+      }
+
+      setAppUpdateMsg('App is already up to date.');
+    } catch (e) {
+      setAppUpdateMsg(`App update failed: ${e?.message || 'unknown error'}`);
+    } finally {
+      setAppUpdating(false);
     }
   };
 
@@ -2037,44 +2112,31 @@ const Graphs = () => {
             </div>
           )}
 
+          {appUpdateMsg && (
+            <div style={{ fontSize: '13px', color: '#6c757d', marginBottom: '10px' }}>
+              {appUpdateMsg}
+            </div>
+          )}
+
           <button
             type="button"
-            disabled={!isOnline || fullSyncing}
-            onClick={async () => {
-              const token = localStorage.getItem('token');
-              if (!token) {
-                setFullSyncMsg('Not logged in');
-                return;
-              }
-              setFullSyncing(true);
-              setFullSyncMsg(null);
-              try {
-                const result = await performFullSync(token);
-                if (result?.success) {
-                  setFullSyncMsg(result.message || 'Full sync completed');
-                } else {
-                  setFullSyncMsg(`Full sync failed: ${result?.error || 'unknown error'}`);
-                }
-              } catch (e) {
-                setFullSyncMsg(`Full sync failed: ${e?.message || 'unknown error'}`);
-              } finally {
-                setFullSyncing(false);
-              }
-            }}
+            disabled={!isOnline || appUpdating}
+            onClick={() => void handleAppUpdate()}
             style={{
               width: '100%',
               padding: '14px 20px',
               borderRadius: 'var(--radius-btn)',
-              border: 'none',
-              background: 'var(--color-accent)',
-              color: '#fff',
+              border: '1px solid var(--color-primary)',
+              background: '#ffffff',
+              color: 'var(--color-primary)',
               fontSize: '15px',
-              fontWeight: '600',
-              cursor: !isOnline || fullSyncing ? 'not-allowed' : 'pointer',
-              opacity: !isOnline || fullSyncing ? 0.7 : 1
+              fontWeight: '700',
+              cursor: !isOnline || appUpdating ? 'not-allowed' : 'pointer',
+              opacity: !isOnline || appUpdating ? 0.7 : 1,
+              marginBottom: '10px'
             }}
           >
-            {fullSyncing ? 'Full Syncing…' : 'Full Sync'}
+            {appUpdating ? 'Checking for Update...' : 'Update App'}
           </button>
 
           <div style={{ fontSize: '13px', color: '#6c757d', margin: '14px 0 10px' }}>

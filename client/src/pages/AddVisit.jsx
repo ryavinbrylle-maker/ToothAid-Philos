@@ -42,7 +42,7 @@ const normalizeSymptomDaysForSave = (v) => {
 
 const GENERAL_TREATMENTS = ['Cleaning', 'Fluoride'];
 const COMMON_TREATMENTS = ['Cleaning', 'Fluoride', 'Sealant', 'Filling', 'Extraction'];
-const COMMON_MEDS = ['Amoxicillin', 'Ibuprofen', 'Paracetamol', 'Chlorhexidine', 'Metronidazole'];
+const COMMON_MEDS = ['Amoxicillin', 'Ibuprofen', 'Paracetamol', 'Chlorhexidine', 'Metronidazole', 'Mefenamic'];
 
 const newTreatmentBlock = () => ({
   id: crypto.randomUUID(),
@@ -253,6 +253,7 @@ export default function AddVisit({ token }) {
 
   const [chiefComplaint, setChiefComplaint] = useState('');
   const [visitNotes, setVisitNotes] = useState('');
+  const [behaviourFrankl, setBehaviourFrankl] = useState('');
   const [requiresFollowUp, setRequiresFollowUp] = useState(false);
   const [followUpPriority, setFollowUpPriority] = useState('WITHIN_14_DAYS');
 
@@ -301,6 +302,7 @@ export default function AddVisit({ token }) {
         setTreatmentBlocks([newTreatmentBlock()]);
         setMedications([]);
         setMedDraft({ name: '', dosage: '', frequencyPerDay: '', days: '' });
+        setBehaviourFrankl('');
         setRequiresFollowUp(false);
         setFollowUpPriority('P2');
         setInitializing(false);
@@ -328,6 +330,7 @@ export default function AddVisit({ token }) {
       setSelectedExamTooth(null);
       setMedications(normalizeMedicationsForForm(v.medications));
       setMedDraft({ name: '', dosage: '', frequencyPerDay: '', days: '' });
+      setBehaviourFrankl(v.behaviourFrankl != null && v.behaviourFrankl !== '' ? String(v.behaviourFrankl) : '');
       setRequiresFollowUp(v.requiresFollowUp === true || v.requiresFollowUp === 'true');
       setFollowUpPriority(normalizeFollowUpTiming(v.followUpPriority));
       setInitializing(false);
@@ -646,6 +649,7 @@ export default function AddVisit({ token }) {
       const dateIso = ymdToIsoUtc8(date) || new Date(date).toISOString();
       const notesForSave = visitNotes.trim() || null;
       const examinationNotesForSave = examinationNotes.trim() || null;
+      const behaviourFranklForSave = behaviourFrankl !== '' ? Number(behaviourFrankl) : null;
 
       let visitData;
       if (isEditMode) {
@@ -674,6 +678,7 @@ export default function AddVisit({ token }) {
           treatmentTypes,
           medications: medicationsForSave,
           notes: notesForSave,
+          behaviourFrankl: behaviourFranklForSave,
           requiresFollowUp: Boolean(requiresFollowUp),
           followUpPriority: requiresFollowUp ? normalizeFollowUpTiming(followUpPriority) : null,
           followUpDueAt: requiresFollowUp
@@ -708,6 +713,7 @@ export default function AddVisit({ token }) {
           treatmentTypes,
           medications: medicationsForSave,
           notes: notesForSave,
+          behaviourFrankl: behaviourFranklForSave,
           requiresFollowUp: Boolean(requiresFollowUp),
           followUpPriority: requiresFollowUp ? normalizeFollowUpTiming(followUpPriority) : null,
           followUpDueAt: requiresFollowUp
@@ -1084,13 +1090,17 @@ export default function AddVisit({ token }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label>Dosage</label>
-              <input
-                type="text"
-                className="form-control"
-                value={medDraft.dosage}
-                onChange={(e) => setMedDraft((d) => ({ ...d, dosage: e.target.value }))}
-                placeholder="e.g. 250mg"
-              />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={medDraft.dosage}
+                  onChange={(e) => setMedDraft((d) => ({ ...d, dosage: e.target.value }))}
+                  placeholder="e.g. 250"
+                  style={{ flex: 1, minWidth: 0 }}
+                />
+                <span style={{ color: 'var(--color-muted)', fontWeight: 700 }}>mg</span>
+              </div>
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label>Times per day</label>
@@ -1152,6 +1162,41 @@ export default function AddVisit({ token }) {
             rows={3}
             placeholder="General notes for this visit…"
           />
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: '12px' }}>
+        <h3 style={{ marginTop: 0, marginBottom: '10px' }}>Behavior Scale</h3>
+        <p style={{ fontSize: '13px', color: 'var(--color-muted)', margin: '0 0 12px', lineHeight: 1.45 }}>
+          Record the patient&apos;s behavior for this visit.
+        </p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {[1, 2, 3, 4].map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setBehaviourFrankl((prev) => (String(prev) === String(n) ? '' : String(n)))}
+              style={{
+                flex: '1 1 64px',
+                padding: '10px 8px',
+                borderRadius: 10,
+                border: String(behaviourFrankl) === String(n) ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                background: String(behaviourFrankl) === String(n) ? '#eff6ff' : '#fff',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              F{n}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ flex: '1 1 80px' }}
+            onClick={() => setBehaviourFrankl('')}
+          >
+            Clear
+          </button>
         </div>
       </div>
 

@@ -18,6 +18,11 @@ import { generateUniquePatientId, isValidPatientId, normalizePatientIdInput } fr
 const MEDICAL_ALLERGY_PRESETS = ['None known', 'Penicillin', 'Shellfish', 'Latex'];
 const MEDICAL_HISTORY_PRESETS = ['G6PD', 'Hospitalization', 'Blue Baby', 'Asthma'];
 const GRADE_OPTIONS = ['Kindergarten', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Graduated', 'Teacher'];
+const GENDER_OPTIONS = [
+  { value: 'M', label: 'Male' },
+  { value: 'F', label: 'Female' },
+  { value: 'Other', label: 'Other' }
+];
 
 const formSectionStyle = {
   border: '1px solid #e5e7eb',
@@ -59,7 +64,7 @@ const RegisterNewChild = ({ token }) => {
       spedCategory: '',
       spedOtherDetail: '',
       medicalHistory: '',
-      behaviourFrankl: '',
+      weight: '',
       otherNotes: ''
     }
   });
@@ -145,6 +150,11 @@ const RegisterNewChild = ({ token }) => {
         setSaving(false);
         return;
       }
+      if (!formData.sex) {
+        notifyError('Gender is required.');
+        setSaving(false);
+        return;
+      }
 
       const patientIdTrim = (formData.patientId || '').trim();
       if (!isValidPatientId(patientIdTrim)) {
@@ -195,17 +205,13 @@ const RegisterNewChild = ({ token }) => {
       };
 
       const rawMc = formData.medicalCondition || {};
-      const bf =
-        rawMc.behaviourFrankl !== '' && rawMc.behaviourFrankl != null
-          ? parseInt(String(rawMc.behaviourFrankl), 10)
-          : null;
       const sped = String(rawMc.spedCategory || '').trim().toLowerCase();
       childData.medicalCondition = {
         allergy: (rawMc.allergy || '').trim() || null,
         spedCategory: ['deaf', 'autism', 'others'].includes(sped) ? sped : null,
         spedOtherDetail: (rawMc.spedOtherDetail || '').trim() || null,
         medicalHistory: (rawMc.medicalHistory || '').trim() || null,
-        behaviourFrankl: Number.isFinite(bf) && bf >= 1 && bf <= 4 ? bf : null,
+        weight: (rawMc.weight || '').trim() || null,
         otherNotes: (rawMc.otherNotes || '').trim() || null
       };
 
@@ -372,11 +378,27 @@ const RegisterNewChild = ({ token }) => {
 
           <div className="form-group">
             <label>Gender *</label>
-            <select name="sex" value={formData.sex} onChange={handleChange} required>
-              <option value="" disabled>Select Gender</option>
-              <option value="M">Male</option>
-              <option value="F">Female</option>
-            </select>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {GENDER_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setFormData((prev) => ({ ...prev, sex: opt.value }))}
+                  style={{
+                    flex: '1 1 96px',
+                    padding: '10px 8px',
+                    borderRadius: 10,
+                    border: formData.sex === opt.value ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                    background: formData.sex === opt.value ? '#eff6ff' : '#fff',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <input type="hidden" name="sex" value={formData.sex} required />
           </div>
 
           <div className="form-group">
@@ -421,12 +443,26 @@ const RegisterNewChild = ({ token }) => {
 
           <div className="form-group">
             <label>Grade</label>
-            <select name="grade" value={formData.grade} onChange={handleChange}>
-              <option value="" disabled>Select grade</option>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {GRADE_OPTIONS.map((grade) => (
-                <option key={grade} value={grade}>{grade}</option>
+                <button
+                  key={grade}
+                  type="button"
+                  onClick={() => setFormData((prev) => ({ ...prev, grade }))}
+                  style={{
+                    flex: '1 1 110px',
+                    padding: '10px 8px',
+                    borderRadius: 10,
+                    border: formData.grade === grade ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                    background: formData.grade === grade ? '#eff6ff' : '#fff',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {grade}
+                </button>
               ))}
-            </select>
+            </div>
           </div>
 
           <div className="form-group">
@@ -546,38 +582,17 @@ const RegisterNewChild = ({ token }) => {
               </div>
             </div>
             <div className="form-group">
-              <label>Behavior (Frankl scale)</label>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {[1, 2, 3, 4].map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => handleMedicalChange('behaviourFrankl', String(n))}
-                    style={{
-                      flex: '1 1 64px',
-                      padding: '10px 8px',
-                      borderRadius: 10,
-                      border:
-                        String(formData.medicalCondition?.behaviourFrankl) === String(n)
-                          ? '2px solid #2563eb'
-                          : '1px solid #e5e7eb',
-                      background:
-                        String(formData.medicalCondition?.behaviourFrankl) === String(n) ? '#eff6ff' : '#fff',
-                      fontWeight: 700,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {n}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  style={{ flex: '1 1 80px' }}
-                  onClick={() => handleMedicalChange('behaviourFrankl', '')}
-                >
-                  Clear
-                </button>
+              <label>Weight</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={formData.medicalCondition?.weight ?? ''}
+                  onChange={(e) => handleMedicalChange('weight', e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <span style={{ color: 'var(--color-muted)', fontWeight: 700 }}>klbs</span>
               </div>
             </div>
           </section>

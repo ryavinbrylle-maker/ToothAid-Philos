@@ -8,7 +8,6 @@ const router = express.Router();
 
 /** Field keys staff may include on the parent questionnaire. */
 export const PARENT_FORM_FIELD_DEFS = [
-  { id: 'patientId', label: 'Patient ID' },
   { id: 'sex', label: 'Gender' },
   { id: 'dob', label: 'Date of Birth' },
   { id: 'age', label: 'Age (if Date of Birth unknown)' },
@@ -22,8 +21,7 @@ export const PARENT_FORM_FIELD_DEFS = [
   { id: 'messenger', label: 'Messenger' },
   { id: 'address', label: 'Address' },
   { id: 'allergy', label: 'Allergy' },
-  { id: 'medicalHistory', label: 'Medical History' },
-  { id: 'behaviourFrankl', label: 'Behavior (Frankl scale 1-4)' }
+  { id: 'medicalHistory', label: 'Medical History' }
 ];
 
 const ALLOWED_IDS = new Set(PARENT_FORM_FIELD_DEFS.map((f) => f.id));
@@ -73,7 +71,6 @@ function applyFieldsToChild(child, body, fieldsMap) {
   const mc = readMedical(child);
   const nextMc = { ...mc };
 
-  if (fieldsMap.patientId) child.patientId = normalizePatientId(body.patientId);
   if (fieldsMap.sex) {
     const sex = String(body.sex || '').trim();
     child.sex = ['M', 'F', 'Other'].includes(sex) ? sex : child.sex;
@@ -91,17 +88,12 @@ function applyFieldsToChild(child, body, fieldsMap) {
   if (fieldsMap.address) child.address = body.address != null ? String(body.address).trim() || null : null;
   if (fieldsMap.allergy) nextMc.allergy = body.allergy != null ? String(body.allergy).trim() || null : null;
   if (fieldsMap.medicalHistory) nextMc.medicalHistory = body.medicalHistory != null ? String(body.medicalHistory).trim() || null : null;
-  if (fieldsMap.behaviourFrankl) {
-    const n = parseInt(String(body.behaviourFrankl ?? ''), 10);
-    nextMc.behaviourFrankl = Number.isFinite(n) && n >= 1 && n <= 4 ? n : null;
-  }
   child.medicalCondition = nextMc;
 }
 
 function buildInitialPayload(child, fieldsMap) {
   const mc = readMedical(child);
   const initial = {};
-  if (fieldsMap.patientId) initial.patientId = child.patientId != null ? String(child.patientId) : '';
   if (fieldsMap.sex) initial.sex = child.sex != null ? String(child.sex) : '';
   if (fieldsMap.dob) initial.dob = child.dob ? new Date(child.dob).toISOString().split('T')[0] : '';
   if (fieldsMap.age) initial.age = child.age != null ? String(child.age) : '';
@@ -116,10 +108,6 @@ function buildInitialPayload(child, fieldsMap) {
   if (fieldsMap.address) initial.address = child.address != null ? String(child.address) : '';
   if (fieldsMap.allergy) initial.allergy = mc.allergy != null ? String(mc.allergy) : '';
   if (fieldsMap.medicalHistory) initial.medicalHistory = mc.medicalHistory != null ? String(mc.medicalHistory) : '';
-  if (fieldsMap.behaviourFrankl) {
-    initial.behaviourFrankl =
-      mc.behaviourFrankl != null && mc.behaviourFrankl !== '' ? String(mc.behaviourFrankl) : '';
-  }
   return initial;
 }
 
@@ -155,6 +143,7 @@ router.post('/:token/submit', async (req, res) => {
         fullName,
         firstName: row.firstName || firstName || null,
         lastName: row.lastName || lastName || null,
+        patientId: row.patientId || null,
         sex: 'Other',
         school: 'UNKNOWN',
         barangay: '',
@@ -189,7 +178,7 @@ router.post('/:token/submit', async (req, res) => {
 /** Staff: create a one-time (or 24h) parent link. */
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { childId, fields, mode, patientName } = req.body || {};
+    const { childId, fields, mode, patientName, patientId } = req.body || {};
     const tokenMode = mode === 'create' ? 'create' : 'update';
     const fieldsMap = normalizeFieldsMap({ fields });
     if (!fieldsMap) {
@@ -207,6 +196,10 @@ router.post('/', authenticateToken, async (req, res) => {
     } else {
       const name = String(patientName || '').trim();
       if (!name) return res.status(400).json({ error: 'Patient name is required' });
+      const patientIdVal = normalizePatientId(patientId);
+      if (!patientIdVal) return res.status(400).json({ error: 'A valid generated Patient ID is required' });
+      const existingPatientId = await Child.findOne({ patientId: patientIdVal }).lean();
+      if (existingPatientId) return res.status(400).json({ error: 'Generated Patient ID already exists. Try again.' });
       nameParts = splitPatientName(name);
     }
 
@@ -217,6 +210,7 @@ router.post('/', authenticateToken, async (req, res) => {
       mode: tokenMode,
       childId: tokenMode === 'update' ? childId : null,
       patientName: tokenMode === 'create' ? String(patientName).trim() : null,
+      patientId: tokenMode === 'create' ? normalizePatientId(patientId) : null,
       firstName: nameParts?.firstName || null,
       lastName: nameParts?.lastName || null,
       fieldsRequested: fieldsMap,

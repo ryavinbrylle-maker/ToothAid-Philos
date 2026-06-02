@@ -16,6 +16,12 @@ const GRADE_OPTIONS = [
   'Teacher'
 ];
 
+const GENDER_OPTIONS = [
+  { value: 'M', label: 'Male' },
+  { value: 'F', label: 'Female' },
+  { value: 'Other', label: 'Other' }
+];
+
 const MEDICAL_ALLERGY_PRESETS = ['None known', 'Penicillin', 'Shellfish', 'Latex'];
 const MEDICAL_HISTORY_PRESETS = ['G6PD', 'Hospitalization', 'Blue Baby', 'Asthma'];
 
@@ -118,31 +124,30 @@ export default function ParentFormPage() {
 
   const renderField = (fieldId) => {
     switch (fieldId) {
-      case 'patientId':
-        return (
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Patient ID</label>
-            <input
-              type="text"
-              inputMode="numeric"
-              maxLength={6}
-              value={form.patientId ?? ''}
-              onChange={(e) => setField('patientId', e.target.value.replace(/\D/g, '').slice(0, 6))}
-              style={inputStyle}
-              placeholder="6-digit ID, if available"
-            />
-          </div>
-        );
       case 'sex':
         return (
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Gender</label>
-            <select value={form.sex ?? ''} onChange={(e) => setField('sex', e.target.value)} style={inputStyle}>
-              <option value="">—</option>
-              <option value="M">Male</option>
-              <option value="F">Female</option>
-              <option value="Other">Other</option>
-            </select>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {GENDER_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setField('sex', opt.value)}
+                  style={{
+                    flex: '1 1 96px',
+                    padding: '10px 8px',
+                    borderRadius: 10,
+                    border: form.sex === opt.value ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                    background: form.sex === opt.value ? '#eff6ff' : '#fff',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
         );
       case 'dob':
@@ -177,13 +182,26 @@ export default function ParentFormPage() {
         return (
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Grade</label>
-            <select value={form.grade ?? ''} onChange={(e) => setField('grade', e.target.value)} style={inputStyle}>
-              {GRADE_OPTIONS.map((g) => (
-                <option key={g || 'empty'} value={g}>
-                  {g === '' ? '—' : g}
-                </option>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {GRADE_OPTIONS.filter(Boolean).map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => setField('grade', g)}
+                  style={{
+                    flex: '1 1 110px',
+                    padding: '10px 8px',
+                    borderRadius: 10,
+                    border: form.grade === g ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                    background: form.grade === g ? '#eff6ff' : '#fff',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {g}
+                </button>
               ))}
-            </select>
+            </div>
           </div>
         );
       case 'class':
@@ -255,32 +273,6 @@ export default function ParentFormPage() {
             <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Medical History</label>
             <textarea value={form.medicalHistory ?? ''} onChange={(e) => setField('medicalHistory', e.target.value)} rows={3} style={inputStyle} />
             {quickInputs('medicalHistory', MEDICAL_HISTORY_PRESETS, '\n')}
-          </div>
-        );
-      case 'behaviourFrankl':
-        return (
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', fontWeight: 600, marginBottom: 8, fontSize: 14 }}>Behavior (Frankl scale)</label>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {[1, 2, 3, 4].map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => setField('behaviourFrankl', String(n))}
-                  style={{
-                    flex: '1 1 72px',
-                    padding: '12px 8px',
-                    borderRadius: 10,
-                    border: String(form.behaviourFrankl) === String(n) ? '2px solid #2563eb' : '1px solid #e5e7eb',
-                    background: String(form.behaviourFrankl) === String(n) ? '#eff6ff' : '#fff',
-                    fontWeight: 700,
-                    cursor: 'pointer'
-                  }}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
           </div>
         );
       default:

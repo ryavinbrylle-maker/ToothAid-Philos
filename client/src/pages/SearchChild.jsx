@@ -12,6 +12,7 @@ import {
 } from '../constants/childSchools';
 import { API_BASE_URL } from '../config';
 import { PARENT_FORM_ALL_FIELD_MAP } from '../constants/parentFormFields';
+import { generateUniquePatientId } from '../utils/patientId';
 import {
   buildLatestFollowUpByChild,
   FOLLOW_UP_TIMING_OPTIONS,
@@ -22,6 +23,12 @@ import {
 } from '../utils/followUpTiming';
 
 const FILTER_FOLLOW_UP_NONE = 'NONE';
+const BEHAVIOUR_BADGE_COLORS = {
+  1: { bg: '#fee2e2', color: '#991b1b', border: '#fecaca' },
+  2: { bg: '#ffedd5', color: '#9a3412', border: '#fed7aa' },
+  3: { bg: '#fef9c3', color: '#854d0e', border: '#fde68a' },
+  4: { bg: '#dcfce7', color: '#166534', border: '#bbf7d0' }
+};
 
 const SearchChild = ({ token }) => {
   const navigate = useNavigate();
@@ -41,6 +48,7 @@ const SearchChild = ({ token }) => {
   const [creatingParentForm, setCreatingParentForm] = useState(false);
   /** Latest visit follow-up timing per child (requiresFollowUp visits only). */
   const [followUpByChild, setFollowUpByChild] = useState(new Map());
+  const [behaviourByChild, setBehaviourByChild] = useState(new Map());
 
   // Load all children on mount
   useEffect(() => {
@@ -55,15 +63,32 @@ const SearchChild = ({ token }) => {
     try {
       const visits = await getAllVisits();
       const map = {};
+      const latestBehaviourRows = new Map();
       for (const v of visits) {
         if (!v?.childId || !v?.date) continue;
         const t = new Date(v.date).getTime();
         if (!Number.isFinite(t)) continue;
         const prev = map[v.childId] ? new Date(map[v.childId]).getTime() : -Infinity;
         if (t > prev) map[v.childId] = new Date(t).toISOString();
+        const behaviour = Number(v.behaviourFrankl);
+        if (Number.isFinite(behaviour) && behaviour >= 1 && behaviour <= 4) {
+          const existing = latestBehaviourRows.get(v.childId);
+          const createdAt = v.createdAt ? new Date(v.createdAt).getTime() : -Infinity;
+          const updatedAt = v.updatedAt ? new Date(v.updatedAt).getTime() : -Infinity;
+          const rank = [t, updatedAt, createdAt].map((x) => (Number.isFinite(x) ? x : -Infinity));
+          const prevRank = existing?.rank || [-Infinity, -Infinity, -Infinity];
+          if (
+            rank[0] > prevRank[0] ||
+            (rank[0] === prevRank[0] && rank[1] > prevRank[1]) ||
+            (rank[0] === prevRank[0] && rank[1] === prevRank[1] && rank[2] > prevRank[2])
+          ) {
+            latestBehaviourRows.set(v.childId, { value: behaviour, rank });
+          }
+        }
       }
       setRecentVisitByChild(map);
       setFollowUpByChild(buildLatestFollowUpByChild(visits));
+      setBehaviourByChild(new Map([...latestBehaviourRows].map(([childId, row]) => [childId, row.value])));
     } catch {
       // ignore
     }
@@ -140,6 +165,11 @@ const SearchChild = ({ token }) => {
     setParentFormUrl('');
     setParentFormCopied(false);
     try {
+      const allChildren = await getAllChildren();
+      const usedPatientIds = new Set(
+        allChildren.map((c) => (c.patientId || '').trim()).filter((p) => /^\d{6}$/.test(p))
+      );
+      const patientId = generateUniquePatientId(usedPatientIds);
       const res = await fetch(`${API_BASE_URL}/parent-form`, {
         method: 'POST',
         headers: {
@@ -149,6 +179,7 @@ const SearchChild = ({ token }) => {
         body: JSON.stringify({
           mode: 'create',
           patientName: name,
+          patientId,
           fields: PARENT_FORM_ALL_FIELD_MAP
         })
       });
@@ -319,11 +350,29 @@ const SearchChild = ({ token }) => {
         <div style={{ paddingBottom: '78px' }}>
           {filtered.map((child) => {
             const fu = followUpByChild.get(child.childId);
+            const behaviour = behaviourByChild.get(child.childId);
+            const behaviourStyle = BEHAVIOUR_BADGE_COLORS[behaviour];
             return (
             <Link key={child.childId} to={`/children/${child.childId}`} style={{ textDecoration: 'none', color: 'inherit' }}>
               <div className="card" style={{ cursor: 'pointer', marginBottom: '8px' }}>
-                <div style={{ marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: '8px' }}>
                   <PatientNameBlock child={child} nameTag="h3" />
+                  {behaviourStyle ? (
+                    <span
+                      style={{
+                        flexShrink: 0,
+                        padding: '4px 8px',
+                        borderRadius: 999,
+                        border: `1px solid ${behaviourStyle.border}`,
+                        background: behaviourStyle.bg,
+                        color: behaviourStyle.color,
+                        fontSize: 12,
+                        fontWeight: 800
+                      }}
+                    >
+                      F{behaviour}
+                    </span>
+                  ) : null}
                 </div>
                 <p style={{ color: '#666', fontSize: '14px', marginBottom: '4px' }}>
                   {child.school} • {child.grade || '—'} • {child.class || '—'}

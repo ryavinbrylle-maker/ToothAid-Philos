@@ -4,7 +4,6 @@ export const PARENT_FORM_FIELD_GROUPS = [
     id: 'basics',
     title: 'Basics',
     fields: [
-      { id: 'patientId', label: 'Patient ID' },
       { id: 'sex', label: 'Gender' },
       { id: 'dob', label: 'Date of Birth' },
       { id: 'age', label: 'Age (if Date of Birth unknown)' },
@@ -30,8 +29,7 @@ export const PARENT_FORM_FIELD_GROUPS = [
     title: 'Medical',
     fields: [
       { id: 'allergy', label: 'Allergy' },
-      { id: 'medicalHistory', label: 'Medical History' },
-      { id: 'behaviourFrankl', label: 'Behavior (Frankl scale 1-4)' }
+      { id: 'medicalHistory', label: 'Medical History' }
     ]
   }
 ];
