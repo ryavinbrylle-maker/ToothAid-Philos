@@ -20,7 +20,7 @@ export default function EditableChipList({
   onApply,
   disabled
 }) {
-  const { list, saveShortcut, renameExtra, removeExtra, isDefault } = useEditablePresets(storageKey, defaultList);
+  const { list, saveShortcut, renameShortcut, removeShortcut } = useEditablePresets(storageKey, defaultList);
   const [editOpen, setEditOpen] = useState(false);
   const [editOriginal, setEditOriginal] = useState('');
   const [editValue, setEditValue] = useState('');
@@ -71,7 +71,7 @@ export default function EditableChipList({
                 else onApply?.(label);
               }}
               className={`chip-toggle${active ? ' chip-toggle--active' : ''}`}
-              title="Long-press to rename or remove (custom shortcuts only)"
+              title="Long-press to rename or remove"
             >
               {label}
             </button>
@@ -164,34 +164,28 @@ export default function EditableChipList({
               onClick={() => {
                 const t = editValue.trim();
                 if (!t) return;
-                if (!isDefault(editOriginal)) {
-                  renameExtra(editOriginal, t);
-                } else {
-                  saveShortcut(t);
-                }
+                renameShortcut(editOriginal, t);
                 setEditOpen(false);
               }}
             >
               Save
             </button>
-            {!isDefault(editOriginal) && (
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => {
-                  removeExtra(editOriginal);
-                  setEditOpen(false);
-                }}
-              >
-                Remove shortcut
-              </button>
-            )}
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                removeShortcut(editOriginal);
+                setEditOpen(false);
+              }}
+            >
+              Remove shortcut
+            </button>
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditOpen(false)}>
               Cancel
             </button>
           </div>
           <p style={{ fontSize: '12px', color: '#6b7280', margin: '8px 0 0' }}>
-            Long-press a chip to edit. Built-in items cannot be removed; save under a new name to add a variant.
+            Long-press a chip to edit or remove it from this shortcut list.
           </p>
         </div>
       )}

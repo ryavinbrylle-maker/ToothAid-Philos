@@ -29,7 +29,7 @@ const NavBar = () => {
           <circle cx="17" cy="7" r="2.5" />
           <path d="M17 11c1.5 0 4 .8 4 2v2h-4" />
         </svg>
-        <span>Children</span>
+        <span>Patients</span>
       </Link>
       <Link to="/schedule" className={`nav-item ${isActive('/schedule') ? 'active' : ''}`}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">

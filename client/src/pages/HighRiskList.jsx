@@ -81,7 +81,7 @@ const HighRiskList = () => {
                       {visit.child ? (
                         <PatientNameBlock child={visit.child} nameTag="h3" />
                       ) : (
-                        <PatientNameBlock name="Unknown Child" nameTag="h3" />
+                        <PatientNameBlock name="Unknown Patient" nameTag="h3" />
                       )}
                     </div>
                     <span style={{ ...getTierBadgeStyle(1), alignSelf: 'flex-start' }}>High priority</span>

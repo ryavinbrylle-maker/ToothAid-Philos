@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { API_BASE_URL } from '../config';
+import { PARENT_FORM_FIELD_GROUPS } from '../constants/parentFormFields';
 
 const GRADE_OPTIONS = [
   '',
@@ -10,8 +11,41 @@ const GRADE_OPTIONS = [
   'Grade 3',
   'Grade 4',
   'Grade 5',
-  'Grade 6'
+  'Grade 6',
+  'Graduated',
+  'Teacher'
 ];
+
+const MEDICAL_ALLERGY_PRESETS = ['None known', 'Penicillin', 'Shellfish', 'Latex'];
+const MEDICAL_HISTORY_PRESETS = ['G6PD', 'Hospitalization', 'Blue Baby', 'Asthma'];
+
+const inputStyle = {
+  width: '100%',
+  padding: 10,
+  borderRadius: 10,
+  border: '1px solid #e5e7eb',
+  fontSize: 15,
+  boxSizing: 'border-box'
+};
+
+const sectionStyle = {
+  border: '1px solid #e5e7eb',
+  borderRadius: 14,
+  padding: 14,
+  marginBottom: 16,
+  background: '#fff'
+};
+
+const quickInputButtonStyle = {
+  border: '1px solid #d1d5db',
+  background: '#f9fafb',
+  borderRadius: 999,
+  padding: '7px 10px',
+  fontSize: 13,
+  fontWeight: 650,
+  cursor: 'pointer',
+  color: '#374151'
+};
 
 export default function ParentFormPage() {
   const { token } = useParams();
@@ -54,6 +88,205 @@ export default function ParentFormPage() {
   const enabledKeys = useMemo(() => Object.keys(fieldsMap).filter((k) => fieldsMap[k]), [fieldsMap]);
 
   const setField = (name, value) => setForm((prev) => ({ ...prev, [name]: value }));
+
+  const appendField = (name, value, separator = '\n') => {
+    setForm((prev) => {
+      const cur = String(prev[name] || '').trim();
+      return { ...prev, [name]: cur ? `${cur}${separator}${value}` : value };
+    });
+  };
+
+  const quickInputs = (field, values, separator) => (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
+        Quick Input
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {values.map((value) => (
+          <button
+            key={value}
+            type="button"
+            style={quickInputButtonStyle}
+            onClick={() => appendField(field, value, separator)}
+          >
+            {value}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderField = (fieldId) => {
+    switch (fieldId) {
+      case 'patientId':
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Patient ID</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={form.patientId ?? ''}
+              onChange={(e) => setField('patientId', e.target.value.replace(/\D/g, '').slice(0, 6))}
+              style={inputStyle}
+              placeholder="6-digit ID, if available"
+            />
+          </div>
+        );
+      case 'sex':
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Gender</label>
+            <select value={form.sex ?? ''} onChange={(e) => setField('sex', e.target.value)} style={inputStyle}>
+              <option value="">—</option>
+              <option value="M">Male</option>
+              <option value="F">Female</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        );
+      case 'dob':
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Date of Birth</label>
+            <input type="date" value={form.dob ?? ''} onChange={(e) => setField('dob', e.target.value)} style={inputStyle} />
+          </div>
+        );
+      case 'age':
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Age (if Date of Birth unknown)</label>
+            <input
+              type="number"
+              min="0"
+              value={form.age ?? ''}
+              onChange={(e) => setField('age', e.target.value)}
+              style={inputStyle}
+              disabled={Boolean(form.dob)}
+            />
+          </div>
+        );
+      case 'school':
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>School</label>
+            <input type="text" value={form.school ?? ''} onChange={(e) => setField('school', e.target.value)} style={inputStyle} />
+          </div>
+        );
+      case 'grade':
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Grade</label>
+            <select value={form.grade ?? ''} onChange={(e) => setField('grade', e.target.value)} style={inputStyle}>
+              {GRADE_OPTIONS.map((g) => (
+                <option key={g || 'empty'} value={g}>
+                  {g === '' ? '—' : g}
+                </option>
+              ))}
+            </select>
+          </div>
+        );
+      case 'class':
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Class</label>
+            <input type="text" value={form.class ?? ''} onChange={(e) => setField('class', e.target.value)} style={inputStyle} />
+          </div>
+        );
+      case 'notes':
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Notes</label>
+            <textarea value={form.notes ?? ''} onChange={(e) => setField('notes', e.target.value)} rows={3} style={inputStyle} />
+          </div>
+        );
+      case 'guardianName':
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Guardian Name</label>
+            <input type="text" value={form.guardianName ?? ''} onChange={(e) => setField('guardianName', e.target.value)} style={inputStyle} />
+          </div>
+        );
+      case 'relationship':
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Relationship</label>
+            <input type="text" value={form.relationship ?? ''} onChange={(e) => setField('relationship', e.target.value)} style={inputStyle} placeholder="e.g. Mother" />
+          </div>
+        );
+      case 'guardianPhone':
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Phone</label>
+            <input type="tel" value={form.guardianPhone ?? ''} onChange={(e) => setField('guardianPhone', e.target.value)} style={inputStyle} />
+          </div>
+        );
+      case 'messenger':
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Messenger</label>
+            <input type="text" value={form.messenger ?? ''} onChange={(e) => setField('messenger', e.target.value)} style={inputStyle} />
+          </div>
+        );
+      case 'address':
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Address</label>
+            <textarea value={form.address ?? ''} onChange={(e) => setField('address', e.target.value)} rows={2} style={inputStyle} />
+          </div>
+        );
+      case 'allergy':
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Allergy</label>
+            <textarea
+              value={form.allergy ?? ''}
+              onChange={(e) => setField('allergy', e.target.value)}
+              rows={2}
+              style={inputStyle}
+              placeholder="List known allergies, or write None."
+            />
+            {quickInputs('allergy', MEDICAL_ALLERGY_PRESETS, ', ')}
+          </div>
+        );
+      case 'medicalHistory':
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Medical History</label>
+            <textarea value={form.medicalHistory ?? ''} onChange={(e) => setField('medicalHistory', e.target.value)} rows={3} style={inputStyle} />
+            {quickInputs('medicalHistory', MEDICAL_HISTORY_PRESETS, '\n')}
+          </div>
+        );
+      case 'behaviourFrankl':
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontWeight: 600, marginBottom: 8, fontSize: 14 }}>Behavior (Frankl scale)</label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {[1, 2, 3, 4].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setField('behaviourFrankl', String(n))}
+                  style={{
+                    flex: '1 1 72px',
+                    padding: '12px 8px',
+                    borderRadius: 10,
+                    border: String(form.behaviourFrankl) === String(n) ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                    background: String(form.behaviourFrankl) === String(n) ? '#eff6ff' : '#fff',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -120,7 +353,9 @@ export default function ParentFormPage() {
           boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
         }}
       >
-        <h1 style={{ fontSize: '22px', margin: '0 0 8px', color: '#111827' }}>Information update</h1>
+        <h1 style={{ fontSize: '22px', margin: '0 0 8px', color: '#111827' }}>
+          {meta?.mode === 'create' ? 'Patient registration' : 'Information update'}
+        </h1>
         <p style={{ margin: '0 0 20px', color: '#6b7280', fontSize: 15 }}>
           Patient: <strong style={{ color: '#111827' }}>{meta?.childName || 'Patient'}</strong>
         </p>
@@ -141,149 +376,18 @@ export default function ParentFormPage() {
         ) : null}
 
         <form onSubmit={handleSubmit}>
-          {fieldsMap.allergy ? (
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Allergy</label>
-              <textarea
-                value={form.allergy ?? ''}
-                onChange={(e) => setField('allergy', e.target.value)}
-                rows={2}
-                style={{ width: '100%', padding: 10, borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 15 }}
-                placeholder="List known allergies, or write “None”."
-              />
-            </div>
-          ) : null}
-
-          {fieldsMap.spedCategory ? (
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>SPED</label>
-              <select
-                value={form.spedCategory ?? ''}
-                onChange={(e) => setField('spedCategory', e.target.value)}
-                style={{ width: '100%', padding: 10, borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 15 }}
-              >
-                <option value="">—</option>
-                <option value="deaf">Deaf / hard of hearing</option>
-                <option value="autism">Autism spectrum</option>
-                <option value="others">Other</option>
-              </select>
-            </div>
-          ) : null}
-
-          {fieldsMap.spedOtherDetail ? (
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>SPED (other details)</label>
-              <input
-                type="text"
-                value={form.spedOtherDetail ?? ''}
-                onChange={(e) => setField('spedOtherDetail', e.target.value)}
-                style={{ width: '100%', padding: 10, borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 15 }}
-              />
-            </div>
-          ) : null}
-
-          {fieldsMap.behaviourFrankl ? (
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: 8, fontSize: 14 }}>Behaviour (Frankl scale)</label>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {[1, 2, 3, 4].map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => setField('behaviourFrankl', String(n))}
-                    style={{
-                      flex: '1 1 72px',
-                      padding: '12px 8px',
-                      borderRadius: 10,
-                      border: String(form.behaviourFrankl) === String(n) ? '2px solid #2563eb' : '1px solid #e5e7eb',
-                      background: String(form.behaviourFrankl) === String(n) ? '#eff6ff' : '#fff',
-                      fontWeight: 700,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {n}
-                  </button>
+          {PARENT_FORM_FIELD_GROUPS.map((group) => {
+            const enabledFields = group.fields.filter((field) => fieldsMap[field.id]);
+            if (enabledFields.length === 0) return null;
+            return (
+              <section key={group.id} style={sectionStyle}>
+                <h2 style={{ margin: '0 0 12px', fontSize: 17, color: '#111827' }}>{group.title}</h2>
+                {enabledFields.map((field) => (
+                  <div key={field.id}>{renderField(field.id)}</div>
                 ))}
-              </div>
-            </div>
-          ) : null}
-
-          {fieldsMap.medicalOtherNotes ? (
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Other medical notes</label>
-              <textarea
-                value={form.medicalOtherNotes ?? ''}
-                onChange={(e) => setField('medicalOtherNotes', e.target.value)}
-                rows={3}
-                style={{ width: '100%', padding: 10, borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 15 }}
-              />
-            </div>
-          ) : null}
-
-          {fieldsMap.guardianPhone ? (
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Guardian phone</label>
-              <input
-                type="tel"
-                value={form.guardianPhone ?? ''}
-                onChange={(e) => setField('guardianPhone', e.target.value)}
-                style={{ width: '100%', padding: 10, borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 15 }}
-              />
-            </div>
-          ) : null}
-
-          {fieldsMap.messenger ? (
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Messenger</label>
-              <input
-                type="text"
-                value={form.messenger ?? ''}
-                onChange={(e) => setField('messenger', e.target.value)}
-                style={{ width: '100%', padding: 10, borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 15 }}
-              />
-            </div>
-          ) : null}
-
-          {fieldsMap.grade ? (
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Grade</label>
-              <select
-                value={form.grade ?? ''}
-                onChange={(e) => setField('grade', e.target.value)}
-                style={{ width: '100%', padding: 10, borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 15 }}
-              >
-                {GRADE_OPTIONS.map((g) => (
-                  <option key={g || 'empty'} value={g}>
-                    {g === '' ? '—' : g}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
-
-          {fieldsMap.class ? (
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Class</label>
-              <input
-                type="text"
-                value={form.class ?? ''}
-                onChange={(e) => setField('class', e.target.value)}
-                style={{ width: '100%', padding: 10, borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 15 }}
-              />
-            </div>
-          ) : null}
-
-          {fieldsMap.notes ? (
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: 14 }}>Notes</label>
-              <textarea
-                value={form.notes ?? ''}
-                onChange={(e) => setField('notes', e.target.value)}
-                rows={3}
-                style={{ width: '100%', padding: 10, borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 15 }}
-              />
-            </div>
-          ) : null}
+              </section>
+            );
+          })}
 
           {enabledKeys.length === 0 ? (
             <p style={{ color: '#6b7280' }}>No fields were enabled for this form.</p>

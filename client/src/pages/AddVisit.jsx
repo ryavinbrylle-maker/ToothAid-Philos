@@ -40,6 +40,7 @@ const normalizeSymptomDaysForSave = (v) => {
   return Math.min(365, Math.max(1, n));
 };
 
+const GENERAL_TREATMENTS = ['Cleaning', 'Fluoride'];
 const COMMON_TREATMENTS = ['Cleaning', 'Fluoride', 'Sealant', 'Filling', 'Extraction'];
 const COMMON_MEDS = ['Amoxicillin', 'Ibuprofen', 'Paracetamol', 'Chlorhexidine', 'Metronidazole'];
 
@@ -977,7 +978,7 @@ export default function AddVisit({ token }) {
           <div style={{ fontWeight: 700, marginBottom: 8 }}>General treatment</div>
           <EditableChipList
             storageKey="toothaid_presets_general_treatment"
-            defaultList={COMMON_TREATMENTS}
+            defaultList={GENERAL_TREATMENTS}
             mode="toggle"
             activeMap={generalTreatmentActiveMap}
             onToggle={toggleGeneralTreatment}

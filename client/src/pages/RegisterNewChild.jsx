@@ -16,7 +16,23 @@ import { notifyError, notifySuccess } from '../utils/notify';
 import { generateUniquePatientId, isValidPatientId, normalizePatientIdInput } from '../utils/patientId';
 
 const MEDICAL_ALLERGY_PRESETS = ['None known', 'Penicillin', 'Shellfish', 'Latex'];
-const MEDICAL_OTHER_NOTE_PRESETS = ['Asthma', 'ADHD', 'Takes regular medication'];
+const MEDICAL_HISTORY_PRESETS = ['G6PD', 'Hospitalization', 'Blue Baby', 'Asthma'];
+const GRADE_OPTIONS = ['Kindergarten', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Graduated', 'Teacher'];
+
+const formSectionStyle = {
+  border: '1px solid #e5e7eb',
+  borderRadius: 14,
+  padding: 16,
+  marginBottom: 16,
+  background: '#fff'
+};
+
+const formSectionTitleStyle = {
+  margin: '0 0 14px',
+  fontSize: '17px',
+  fontWeight: 800,
+  color: '#111827'
+};
 
 const RegisterNewChild = ({ token }) => {
   const navigate = useNavigate();
@@ -30,8 +46,11 @@ const RegisterNewChild = ({ token }) => {
     school: '',
     grade: '',
     class: '',
+    guardianName: '',
+    relationship: '',
     guardianPhone: '',
     messenger: '',
+    address: '',
     priority: 'P2',
     notes: '',
     patientId: '',
@@ -39,6 +58,7 @@ const RegisterNewChild = ({ token }) => {
       allergy: '',
       spedCategory: '',
       spedOtherDetail: '',
+      medicalHistory: '',
       behaviourFrankl: '',
       otherNotes: ''
     }
@@ -46,6 +66,7 @@ const RegisterNewChild = ({ token }) => {
   const [duplicates, setDuplicates] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const isTeacher = formData.grade === 'Teacher';
 
   // Check for duplicates
   useEffect(() => {
@@ -146,6 +167,7 @@ const RegisterNewChild = ({ token }) => {
       const firstName = (formData.firstName || '').trim();
       const lastName = (formData.lastName || '').trim();
       const fullName = [firstName, lastName].filter(Boolean).join(' ');
+      const isTeacherRecord = formData.grade === 'Teacher';
       const childData = {
         childId,
         fullName,
@@ -159,8 +181,11 @@ const RegisterNewChild = ({ token }) => {
         grade: formData.grade.trim() || null,
         class: formData.class.trim() || null,
         barangay: '',
+        guardianName: isTeacherRecord ? null : (formData.guardianName.trim() || null),
+        relationship: isTeacherRecord ? null : (formData.relationship.trim() || null),
         guardianPhone: formData.guardianPhone.trim() || null,
         messenger: formData.messenger.trim() || null,
+        address: formData.address.trim() || null,
         priority: formData.priority || 'P2',
         notes: formData.notes.trim() || null,
         createdBy: username,
@@ -179,6 +204,7 @@ const RegisterNewChild = ({ token }) => {
         allergy: (rawMc.allergy || '').trim() || null,
         spedCategory: ['deaf', 'autism', 'others'].includes(sped) ? sped : null,
         spedOtherDetail: (rawMc.spedOtherDetail || '').trim() || null,
+        medicalHistory: (rawMc.medicalHistory || '').trim() || null,
         behaviourFrankl: Number.isFinite(bf) && bf >= 1 && bf <= 4 ? bf : null,
         otherNotes: (rawMc.otherNotes || '').trim() || null
       };
@@ -194,11 +220,11 @@ const RegisterNewChild = ({ token }) => {
         }
       }
 
-      notifySuccess('Child registered.');
+      notifySuccess('Patient registered.');
       navigate(`/children/${childId}`);
     } catch (err) {
       setError(err.message);
-      notifyError(err?.message || 'Failed to register child');
+      notifyError(err?.message || 'Failed to register patient');
     } finally {
       setSaving(false);
     }
@@ -216,7 +242,7 @@ const RegisterNewChild = ({ token }) => {
 
   return (
     <div className="container">
-      <PageHeader title="Register New Child" subtitle="Add a new child to the system" icon="children" />
+      <PageHeader title="Register New Patient" subtitle="Add a new patient to the system" icon="children" />
 
       <div style={{ marginBottom: '16px' }}>
         <Link
@@ -231,7 +257,7 @@ const RegisterNewChild = ({ token }) => {
             fontWeight: '500'
           }}
         >
-          ← Back to Children
+          ← Back to Patients
         </Link>
       </div>
 
@@ -259,6 +285,8 @@ const RegisterNewChild = ({ token }) => {
 
       <form onSubmit={handleSubmit}>
         <div className="card">
+          <section style={formSectionStyle}>
+            <h3 style={formSectionTitleStyle}>Basics</h3>
           <div className="form-group">
             <label>First Name *</label>
             <input
@@ -338,15 +366,14 @@ const RegisterNewChild = ({ token }) => {
                 value={formData.age}
                 onChange={handleChange}
                 min="0"
-                max="18"
               />
             </div>
           )}
 
           <div className="form-group">
-            <label>Sex *</label>
+            <label>Gender *</label>
             <select name="sex" value={formData.sex} onChange={handleChange} required>
-              <option value="" disabled>Select Sex</option>
+              <option value="" disabled>Select Gender</option>
               <option value="M">Male</option>
               <option value="F">Female</option>
             </select>
@@ -396,13 +423,9 @@ const RegisterNewChild = ({ token }) => {
             <label>Grade</label>
             <select name="grade" value={formData.grade} onChange={handleChange}>
               <option value="" disabled>Select grade</option>
-              <option value="Kindergarten">Kindergarten</option>
-              <option value="Grade 1">Grade 1</option>
-              <option value="Grade 2">Grade 2</option>
-              <option value="Grade 3">Grade 3</option>
-              <option value="Grade 4">Grade 4</option>
-              <option value="Grade 5">Grade 5</option>
-              <option value="Grade 6">Grade 6</option>
+              {GRADE_OPTIONS.map((grade) => (
+                <option key={grade} value={grade}>{grade}</option>
+              ))}
             </select>
           </div>
 
@@ -416,17 +439,68 @@ const RegisterNewChild = ({ token }) => {
               placeholder="e.g. A"
             />
           </div>
+          </section>
 
-          <div
-            className="form-group"
-            style={{
-              border: '2px solid #22c55e',
-              borderRadius: 12,
-              padding: 14,
-              background: 'rgba(34, 197, 94, 0.04)'
-            }}
-          >
-            <h3 style={{ margin: '0 0 12px', fontSize: '16px', color: '#14532d' }}>Medical condition</h3>
+          <section style={formSectionStyle}>
+            <h3 style={formSectionTitleStyle}>Contact</h3>
+            {!isTeacher && (
+              <>
+                <div className="form-group">
+                  <label>Guardian Name</label>
+                  <input
+                    type="text"
+                    name="guardianName"
+                    value={formData.guardianName}
+                    onChange={handleChange}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Relationship</label>
+                  <input
+                    type="text"
+                    name="relationship"
+                    value={formData.relationship}
+                    onChange={handleChange}
+                    placeholder="e.g. Mother"
+                  />
+                </div>
+              </>
+            )}
+            <div className="form-group">
+              <label>{isTeacher ? 'Phone' : 'Phone'}</label>
+              <input
+                type="tel"
+                name="guardianPhone"
+                value={formData.guardianPhone}
+                onChange={handleChange}
+                placeholder="09123456789"
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Messenger</label>
+              <input
+                type="text"
+                name="messenger"
+                value={formData.messenger}
+                onChange={handleChange}
+                placeholder="Optional"
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Address</label>
+              <textarea
+                name="address"
+                value={formData.address}
+                onChange={handleChange}
+                rows={2}
+              />
+            </div>
+          </section>
+
+          <section style={formSectionStyle}>
+            <h3 style={formSectionTitleStyle}>Medical</h3>
             <div className="form-group">
               <label>Allergy</label>
               <textarea
@@ -450,27 +524,29 @@ const RegisterNewChild = ({ token }) => {
               </div>
             </div>
             <div className="form-group">
-              <label>SPED</label>
-              <select
-                value={formData.medicalCondition?.spedCategory ?? ''}
-                onChange={(e) => handleMedicalChange('spedCategory', e.target.value)}
-              >
-                <option value="">—</option>
-                <option value="deaf">Deaf / hard of hearing</option>
-                <option value="autism">Autism spectrum</option>
-                <option value="others">Other</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>SPED (other details)</label>
-              <input
-                type="text"
-                value={formData.medicalCondition?.spedOtherDetail ?? ''}
-                onChange={(e) => handleMedicalChange('spedOtherDetail', e.target.value)}
+              <label>Medical History</label>
+              <textarea
+                rows={2}
+                value={formData.medicalCondition?.medicalHistory ?? ''}
+                onChange={(e) => handleMedicalChange('medicalHistory', e.target.value)}
               />
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: 6 }}>
+                  Quick phrases (tap to append line; long-press to edit shortcuts)
+                </div>
+                <EditableChipList
+                  storageKey="toothaid_presets_medical_history"
+                  defaultList={MEDICAL_HISTORY_PRESETS}
+                  mode="apply"
+                  onApply={(name) => {
+                    const cur = (formData.medicalCondition?.medicalHistory ?? '').trim();
+                    handleMedicalChange('medicalHistory', cur ? `${cur}\n${name}` : name);
+                  }}
+                />
+              </div>
             </div>
             <div className="form-group">
-              <label>Behaviour (Frankl scale)</label>
+              <label>Behavior (Frankl scale)</label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {[1, 2, 3, 4].map((n) => (
                   <button
@@ -504,51 +580,7 @@ const RegisterNewChild = ({ token }) => {
                 </button>
               </div>
             </div>
-            <div className="form-group">
-              <label>Other notes</label>
-              <textarea
-                rows={2}
-                value={formData.medicalCondition?.otherNotes ?? ''}
-                onChange={(e) => handleMedicalChange('otherNotes', e.target.value)}
-              />
-              <div style={{ marginTop: 8 }}>
-                <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: 6 }}>
-                  Quick phrases (tap to append line; long-press to edit shortcuts)
-                </div>
-                <EditableChipList
-                  storageKey="toothaid_presets_medical_other_notes"
-                  defaultList={MEDICAL_OTHER_NOTE_PRESETS}
-                  mode="apply"
-                  onApply={(name) => {
-                    const cur = (formData.medicalCondition?.otherNotes ?? '').trim();
-                    handleMedicalChange('otherNotes', cur ? `${cur}\n${name}` : name);
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label>Guardian Phone</label>
-            <input
-              type="tel"
-              name="guardianPhone"
-              value={formData.guardianPhone}
-              onChange={handleChange}
-              placeholder="09123456789"
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Messenger</label>
-            <input
-              type="text"
-              name="messenger"
-              value={formData.messenger}
-              onChange={handleChange}
-              placeholder="Optional"
-            />
-          </div>
+          </section>
 
           <div className="form-group">
             <label>Notes (optional)</label>
@@ -557,7 +589,7 @@ const RegisterNewChild = ({ token }) => {
               value={formData.notes}
               onChange={handleChange}
               rows="3"
-              placeholder="Any notes about this child..."
+              placeholder="Any notes about this patient..."
             />
           </div>
 
@@ -566,7 +598,7 @@ const RegisterNewChild = ({ token }) => {
             className="btn btn-primary btn-block"
             disabled={saving}
           >
-            {saving ? 'Saving...' : 'Register Child'}
+            {saving ? 'Saving...' : 'Register Patient'}
           </button>
         </div>
       </form>

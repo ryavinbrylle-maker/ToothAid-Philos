@@ -297,7 +297,7 @@ export default function AppointmentPage({ token }) {
   if (!child) {
     return (
       <div className="container">
-        <div className="empty-state">Child not found</div>
+        <div className="empty-state">Patient not found</div>
         <NavBar />
       </div>
     );

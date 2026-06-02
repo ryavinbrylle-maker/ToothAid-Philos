@@ -87,6 +87,9 @@ function mergeChildRowFromPull(serverRow, local) {
   restoreIfServerMissingOrEmpty('patientId', { treatBlankStringAsEmpty: true });
   restoreIfServerMissingOrEmpty('notes', { treatBlankStringAsEmpty: true });
   restoreIfServerMissingOrEmpty('medicalCondition');
+  restoreIfServerMissingOrEmpty('guardianName', { treatBlankStringAsEmpty: true });
+  restoreIfServerMissingOrEmpty('relationship', { treatBlankStringAsEmpty: true });
+  restoreIfServerMissingOrEmpty('address', { treatBlankStringAsEmpty: true });
 
   return merged;
 }
@@ -328,6 +331,8 @@ const GRADUATION_ORDER = {
   'Grade 2': 4,
   'Grade 1': 5,
   Kindergarten: 6,
+  Graduated: 90,
+  Teacher: 91,
   '6th Grade': 0,
   '5th Grade': 1,
   '4th Grade': 2,
