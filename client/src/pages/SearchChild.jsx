@@ -16,9 +16,11 @@ import { generateUniquePatientId } from '../utils/patientId';
 import {
   buildLatestFollowUpByChild,
   FOLLOW_UP_SORT_RANK_NONE,
+  FOLLOW_UP_WHENEVER,
   followUpSortRank,
   formatFollowUpDueAt,
-  getFollowUpDueCountdownLabel
+  getFollowUpDueCountdownLabel,
+  getFollowUpTimingLabel
 } from '../utils/followUpTiming';
 
 const FILTER_FOLLOW_UP_NONE = 'NONE';
@@ -316,28 +318,66 @@ const SearchChild = ({ token }) => {
         <div style={{ paddingBottom: '78px' }}>
           {filtered.map((child) => {
             const fu = followUpByChild.get(child.childId);
+            const followUpDueLabel = fu?.dueAt ? formatFollowUpDueAt(fu.dueAt) : null;
+            const followUpCountdown = fu?.dueAt ? getFollowUpDueCountdownLabel(fu.dueAt) : null;
+            const followUpTopRightLabel =
+              followUpCountdown ||
+              (fu?.timing === FOLLOW_UP_WHENEVER ? getFollowUpTimingLabel(fu.timing, fu.followUpDays) : null);
             const behaviour = behaviourByChild.get(child.childId);
             const behaviourStyle = BEHAVIOUR_BADGE_COLORS[behaviour];
             return (
             <Link key={child.childId} to={`/children/${child.childId}`} style={{ textDecoration: 'none', color: 'inherit' }}>
               <div className="card" style={{ cursor: 'pointer', marginBottom: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: '8px' }}>
-                  <PatientNameBlock child={child} nameTag="h3" />
-                  {behaviourStyle ? (
-                    <span
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <PatientNameBlock child={child} nameTag="h3" />
+                  </div>
+                  {(followUpTopRightLabel || behaviourStyle) ? (
+                    <div
                       style={{
                         flexShrink: 0,
-                        padding: '4px 8px',
-                        borderRadius: 999,
-                        border: `1px solid ${behaviourStyle.border}`,
-                        background: behaviourStyle.bg,
-                        color: behaviourStyle.color,
-                        fontSize: 12,
-                        fontWeight: 800
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'flex-end',
+                        gap: '6px'
                       }}
                     >
-                      F{behaviour}
-                    </span>
+                      {followUpTopRightLabel ? (
+                        <div
+                          style={{
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            lineHeight: 1.3,
+                            textAlign: 'right',
+                            color:
+                              followUpCountdown === 'Due today'
+                                ? '#b45309'
+                                : followUpCountdown?.includes('overdue')
+                                  ? '#b91c1c'
+                                  : '#4b5563',
+                            whiteSpace: 'nowrap',
+                            maxWidth: '140px'
+                          }}
+                        >
+                          {followUpTopRightLabel}
+                        </div>
+                      ) : null}
+                      {behaviourStyle ? (
+                        <span
+                          style={{
+                            padding: '4px 8px',
+                            borderRadius: 999,
+                            border: `1px solid ${behaviourStyle.border}`,
+                            background: behaviourStyle.bg,
+                            color: behaviourStyle.color,
+                            fontSize: 12,
+                            fontWeight: 800
+                          }}
+                        >
+                          F{behaviour}
+                        </span>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
                 <p style={{ color: '#666', fontSize: '14px', marginBottom: '4px' }}>

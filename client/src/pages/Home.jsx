@@ -62,6 +62,17 @@ const appointmentStatusToQueueStatus = (apptStatus) => {
   return 'WAITING';
 };
 
+const TERMINAL_QUEUE_STATUSES = new Set(['ATTENDED', 'CANCELLED', 'RESCHEDULED']);
+
+/** Prefer appointment status over stale meta WAITING; keep in-flight meta when appt still SCHEDULED. */
+const mergeQueueStatus = (metaStatus, apptStatus) => {
+  const appt = apptStatus || 'WAITING';
+  const meta = metaStatus || 'WAITING';
+  if (TERMINAL_QUEUE_STATUSES.has(appt)) return appt;
+  if (TERMINAL_QUEUE_STATUSES.has(meta)) return meta;
+  return appt;
+};
+
 /** Latest appointment row status per child (creation order tie-break). */
 const latestQueueStatusByChild = (apptList) => {
   const sorted = sortAppointmentsByCreated(apptList);
@@ -154,7 +165,7 @@ const mergeQueueWindow = (boardForWindow, prevItems, maxN) => {
       if (!it?.childId || !allowed.has(it.childId)) continue;
       if (ordered.includes(it.childId)) continue;
       ordered.push(it.childId);
-      statusById.set(it.childId, it.status || apptStatusByChild.get(it.childId) || 'WAITING');
+      statusById.set(it.childId, mergeQueueStatus(it.status, apptStatusByChild.get(it.childId)));
     }
   }
 
@@ -165,7 +176,7 @@ const mergeQueueWindow = (boardForWindow, prevItems, maxN) => {
 
   return ordered.slice(0, maxN).map((childId) => ({
     childId,
-    status: statusById.get(childId) || apptStatusByChild.get(childId) || 'WAITING'
+    status: mergeQueueStatus(statusById.get(childId), apptStatusByChild.get(childId))
   }));
 };
 
