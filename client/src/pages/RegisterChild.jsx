@@ -228,7 +228,7 @@ const RegisterChild = ({ token }) => {
 
           {!loading && query.trim().length === 0 && results.length === 0 && (
             <div className="empty-state">
-              <p>No children registered yet. Register children first in the Children tab.</p>
+              <p>No patients registered yet. Register patients first in the Patients tab.</p>
             </div>
           )}
         </>

@@ -10,6 +10,8 @@ import {
   CHILD_SCHOOL_FILTER_OTHERS,
   isPresetChildSchool
 } from '../constants/childSchools';
+import { API_BASE_URL } from '../config';
+import { PARENT_FORM_ALL_FIELD_MAP } from '../constants/parentFormFields';
 import {
   buildLatestFollowUpByChild,
   FOLLOW_UP_TIMING_OPTIONS,
@@ -32,6 +34,11 @@ const SearchChild = ({ token }) => {
   const [filterFollowUp, setFilterFollowUp] = useState('');
   const [sortMode, setSortMode] = useState('RECENT_VISIT'); // NAME | RECENT_VISIT | FOLLOW_UP
   const [recentVisitByChild, setRecentVisitByChild] = useState({}); // { [childId]: isoDate }
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [parentFormName, setParentFormName] = useState('');
+  const [parentFormUrl, setParentFormUrl] = useState('');
+  const [parentFormCopied, setParentFormCopied] = useState(false);
+  const [creatingParentForm, setCreatingParentForm] = useState(false);
   /** Latest visit follow-up timing per child (requiresFollowUp visits only). */
   const [followUpByChild, setFollowUpByChild] = useState(new Map());
 
@@ -126,9 +133,41 @@ const SearchChild = ({ token }) => {
     return sorted;
   }, [results, filterSchool, filterGrade, filterClass, filterFollowUp, sortMode, recentVisitByChild, followUpByChild]);
 
+  const createNewPatientParentForm = async () => {
+    const name = parentFormName.trim();
+    if (!name) return;
+    setCreatingParentForm(true);
+    setParentFormUrl('');
+    setParentFormCopied(false);
+    try {
+      const res = await fetch(`${API_BASE_URL}/parent-form`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          mode: 'create',
+          patientName: name,
+          fields: PARENT_FORM_ALL_FIELD_MAP
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setParentFormUrl(`Error: ${data.error || 'Could not create link'}`);
+        return;
+      }
+      setParentFormUrl(`${window.location.origin}/parent-form/${data.token}`);
+    } catch (err) {
+      setParentFormUrl('Error: Could not create link. Check your connection.');
+    } finally {
+      setCreatingParentForm(false);
+    }
+  };
+
   return (
     <div className="container">
-<PageHeader title="Children" subtitle="Search or register children" icon="children" />
+<PageHeader title="Patients" subtitle="Search or register patients" icon="children" />
 
       {/* Search Input - Apple Style */}
       <div style={{
@@ -303,21 +342,110 @@ const SearchChild = ({ token }) => {
 
       {!loading && query.trim().length >= 2 && results.length === 0 && (
         <div className="empty-state">
-          <p>No children found matching "{query}"</p>
+          <p>No patients found matching "{query}"</p>
         </div>
       )}
 
       {!loading && query.trim().length === 0 && results.length === 0 && (
         <div className="empty-state">
-          <p>No children registered yet</p>
+          <p>No patients registered yet</p>
+        </div>
+      )}
+
+      {addMenuOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.45)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16
+          }}
+          onClick={() => setAddMenuOpen(false)}
+        >
+          <div
+            className="card"
+            style={{ width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ marginTop: 0 }}>Add Patient</h3>
+            <p style={{ marginTop: 0, color: 'var(--color-muted)', fontSize: 14 }}>
+              Choose how you want to add this patient.
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ width: '100%', marginBottom: 10 }}
+              onClick={() => navigate('/children/register')}
+            >
+              Direct Registration
+            </button>
+
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, marginTop: 12 }}>
+              <h4 style={{ margin: '0 0 8px' }}>Send a form to parents</h4>
+              <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--color-muted)' }}>
+                Enter the patient name first. The generated form asks parents to fill all other fields.
+              </p>
+              <div className="form-group">
+                <label>Patient Name</label>
+                <input
+                  type="text"
+                  value={parentFormName}
+                  onChange={(e) => setParentFormName(e.target.value)}
+                  placeholder="First and last name"
+                />
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ width: '100%', marginBottom: 10 }}
+                disabled={creatingParentForm || !parentFormName.trim()}
+                onClick={() => void createNewPatientParentForm()}
+              >
+                {creatingParentForm ? 'Creating…' : 'Generate link'}
+              </button>
+              {parentFormUrl ? (
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, color: 'var(--color-muted)', marginBottom: 6 }}>URL</label>
+                  <input readOnly value={parentFormUrl} style={{ width: '100%', fontSize: 13 }} />
+                  {!parentFormUrl.startsWith('Error:') ? (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ width: '100%', marginTop: 8 }}
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(parentFormUrl);
+                        setParentFormCopied(true);
+                        window.setTimeout(() => setParentFormCopied(false), 1800);
+                      }}
+                    >
+                      {parentFormCopied ? 'Copied!' : 'Copy to clipboard'}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
+            <button type="button" className="btn btn-secondary" style={{ width: '100%', marginTop: 12 }} onClick={() => setAddMenuOpen(false)}>
+              Close
+            </button>
+          </div>
         </div>
       )}
 
       {/* Floating "+" */}
       <button
         type="button"
-        onClick={() => navigate('/children/register')}
-        aria-label="Register new child"
+        onClick={() => {
+          setParentFormName('');
+          setParentFormUrl('');
+          setParentFormCopied(false);
+          setAddMenuOpen(true);
+        }}
+        aria-label="Register new patient"
         style={{
           position: 'fixed',
           right: '16px',

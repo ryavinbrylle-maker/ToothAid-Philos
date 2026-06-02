@@ -79,8 +79,11 @@ router.post('/push', authenticateToken, async (req, res) => {
             grade: p.grade != null && p.grade !== '' ? p.grade : null,
             class: p.class != null && p.class !== '' ? p.class : null,
             barangay: p.barangay != null && String(p.barangay).trim() !== '' ? String(p.barangay).trim() : '',
+            guardianName: p.guardianName != null && p.guardianName !== '' ? p.guardianName : null,
+            relationship: p.relationship != null && p.relationship !== '' ? p.relationship : null,
             guardianPhone: p.guardianPhone != null && p.guardianPhone !== '' ? p.guardianPhone : null,
             messenger: p.messenger != null && p.messenger !== '' ? p.messenger : null,
+            address: p.address != null && p.address !== '' ? p.address : null,
             priority: p.priority != null && p.priority !== '' ? p.priority : 'P2',
             consentGeneralReceivedAt: p.consentGeneralReceivedAt ? new Date(p.consentGeneralReceivedAt) : null,
             consentSpecific: Array.isArray(p.consentSpecific)

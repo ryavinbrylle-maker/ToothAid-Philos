@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import NavBar from '../components/NavBar';
 import PageHeader from '../components/PageHeader';
-import { getAllChildren, getAllVisits, getGraduationOrder } from '../db/indexedDB';
+import { addToOutbox, getAllChildren, getAllVisits, getGraduationOrder, performSync, upsertChild } from '../db/indexedDB';
 import { performFullSync } from '../db/indexedDB';
 import { 
   groupVisitsByBucket, 
@@ -32,6 +32,9 @@ const Graphs = () => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [fullSyncing, setFullSyncing] = useState(false);
   const [fullSyncMsg, setFullSyncMsg] = useState(null);
+  const [promotingGrades, setPromotingGrades] = useState(false);
+  const [showPromoteGradesConfirm, setShowPromoteGradesConfirm] = useState(false);
+  const [dataRefreshKey, setDataRefreshKey] = useState(0);
   
   // Granularity state - persisted in localStorage
   const [granularity, setGranularity] = useState(() => {
@@ -87,6 +90,16 @@ const Graphs = () => {
   
   // Active point state for custom tooltip (only shows when dot is touched directly)
   const [activePoint, setActivePoint] = useState(null); // { chartId, index, x, y, value, label }
+
+  const NEXT_GRADE_MAP = {
+    Kindergarten: 'Grade 1',
+    'Grade 1': 'Grade 2',
+    'Grade 2': 'Grade 3',
+    'Grade 3': 'Grade 4',
+    'Grade 4': 'Grade 5',
+    'Grade 5': 'Grade 6',
+    'Grade 6': 'Graduated'
+  };
 
   // Minimum swipe distance (in pixels) - lowered for better sensitivity
   const minSwipeDistance = 30;
@@ -232,6 +245,52 @@ const Graphs = () => {
     }
     
     return slides;
+  };
+
+  const handleMoveAllIntoNextGrade = async () => {
+    setShowPromoteGradesConfirm(false);
+    setPromotingGrades(true);
+    setFullSyncMsg(null);
+    try {
+      const children = await getAllChildren();
+      const username = localStorage.getItem('username') || 'unknown';
+      const nowIso = new Date().toISOString();
+      let updatedCount = 0;
+
+      for (const child of children) {
+        const currentGrade = String(child?.grade || '').trim();
+        const nextGrade = NEXT_GRADE_MAP[currentGrade];
+        if (!nextGrade) continue;
+
+        const updatedChild = {
+          ...child,
+          grade: nextGrade,
+          updatedBy: username,
+          updatedAt: nowIso
+        };
+        await upsertChild(updatedChild);
+        await addToOutbox('UPSERT_CHILD', updatedChild.childId, updatedChild);
+        updatedCount += 1;
+      }
+
+      if (navigator.onLine) {
+        const token = localStorage.getItem('token');
+        if (token) {
+          try {
+            await performSync(token);
+          } catch (syncError) {
+            console.error('Sync failed after grade promotion:', syncError);
+          }
+        }
+      }
+
+      setFullSyncMsg(`Moved ${updatedCount} patient(s) into the next grade.`);
+      setDataRefreshKey((v) => v + 1);
+    } catch (e) {
+      setFullSyncMsg(`Move all into next grade failed: ${e?.message || 'unknown error'}`);
+    } finally {
+      setPromotingGrades(false);
+    }
   };
 
   // Persist granularity to localStorage
@@ -630,7 +689,7 @@ const Graphs = () => {
     };
 
     loadData();
-  }, [granularity, exportRange, exportMonth, exportYear, dashFilterEnabled, dashFrom, dashTo]);
+  }, [granularity, exportRange, exportMonth, exportYear, dashFilterEnabled, dashFrom, dashTo, dataRefreshKey]);
 
   // Reset slide when data changes
   useEffect(() => {
@@ -1043,7 +1102,7 @@ const Graphs = () => {
         return (
           <div className="card" style={{ marginBottom: '20px', minHeight: '400px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-              <h2 style={{ fontSize: '18px', margin: 0 }}>Average Decayed Teeth per Child (D)</h2>
+              <h2 style={{ fontSize: '18px', margin: 0 }}>Average Decayed Teeth per Patient (D)</h2>
             </div>
             <GranularitySelector />
             <div style={{ position: 'relative' }} onClick={handleChartClick}>
@@ -1073,7 +1132,7 @@ const Graphs = () => {
         return (
           <div className="card" style={{ marginBottom: '20px', minHeight: '400px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-              <h2 style={{ fontSize: '18px', margin: 0 }}>% of Children with ≥1 Decayed Tooth</h2>
+              <h2 style={{ fontSize: '18px', margin: 0 }}>% of Patients with ≥1 Decayed Tooth</h2>
             </div>
             <GranularitySelector />
             <div style={{ position: 'relative' }} onClick={handleChartClick}>
@@ -1477,7 +1536,7 @@ const Graphs = () => {
       <div className="container">
         <PageHeader title="Reports" subtitle="Data visualization and insights" icon="reports" />
         <div className="card">
-          <div className="empty-state">No data available yet. Register children and add visits to see statistics.</div>
+          <div className="empty-state">No data available yet. Register patients and add visits to see statistics.</div>
         </div>
         <NavBar />
       </div>
@@ -1565,7 +1624,7 @@ const Graphs = () => {
                 {metrics.totalChildren}
               </div>
               <div style={{ fontSize: '13px', color: '#6c757d', marginTop: '2px' }}>
-                {dashFilterEnabled ? 'Children (visits in range)' : 'Total children'}
+                {dashFilterEnabled ? 'Patients (visits in range)' : 'Total patients'}
               </div>
             </div>
             <div style={{ padding: '6px 8px' }}>
@@ -1969,7 +2028,7 @@ const Graphs = () => {
           padding: '14px 16px'
         }}>
           <div style={{ fontSize: '13px', color: '#6c757d', marginBottom: '10px' }}>
-            Full sync will re-pull all data from server (useful for demo / dev).
+            Advanced actions for data maintenance.
           </div>
 
           {fullSyncMsg && (
@@ -2017,8 +2076,85 @@ const Graphs = () => {
           >
             {fullSyncing ? 'Full Syncing…' : 'Full Sync'}
           </button>
+
+          <div style={{ fontSize: '13px', color: '#6c757d', margin: '14px 0 10px' }}>
+            Move every patient into the next grade: Kindergarten → Grade 1, Grade 5 → Grade 6, Grade 6 → Graduated. Teacher stays unchanged.
+          </div>
+
+          <button
+            type="button"
+            disabled={promotingGrades}
+            onClick={() => setShowPromoteGradesConfirm(true)}
+            style={{
+              width: '100%',
+              padding: '14px 20px',
+              borderRadius: 'var(--radius-btn)',
+              border: '1px solid #d97706',
+              background: '#fff7ed',
+              color: '#9a3412',
+              fontSize: '15px',
+              fontWeight: '700',
+              cursor: promotingGrades ? 'not-allowed' : 'pointer',
+              opacity: promotingGrades ? 0.7 : 1
+            }}
+          >
+            {promotingGrades ? 'Moving grades…' : 'Move all into Next Grade'}
+          </button>
         </div>
       </div>
+
+      {showPromoteGradesConfirm && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1000,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16
+          }}
+          onClick={() => setShowPromoteGradesConfirm(false)}
+        >
+          <div
+            className="card"
+            style={{ maxWidth: 440, width: '100%' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ marginTop: 0, color: '#9a3412' }}>Confirm Grade Promotion</h3>
+            <p style={{ fontSize: 14, lineHeight: 1.5, color: '#374151' }}>
+              This will move all patients into the next grade:
+            </p>
+            <ul style={{ fontSize: 14, lineHeight: 1.6, color: '#374151', paddingLeft: 20 }}>
+              <li>Kindergarten through Grade 5 move up one grade.</li>
+              <li>Grade 6 becomes Graduated.</li>
+              <li>Teacher stays unchanged.</li>
+            </ul>
+            <p style={{ fontSize: 13, color: '#b45309' }}>
+              This action updates many patient records. Continue?
+            </p>
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ flex: 1 }}
+                onClick={() => setShowPromoteGradesConfirm(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ flex: 1, background: '#d97706' }}
+                onClick={() => void handleMoveAllIntoNextGrade()}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <NavBar />
     </div>

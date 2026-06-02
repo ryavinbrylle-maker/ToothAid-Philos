@@ -71,12 +71,27 @@ const childSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.Mixed,
     default: {}
   },
+  guardianName: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  relationship: {
+    type: String,
+    trim: true,
+    default: null
+  },
   guardianPhone: {
     type: String,
     trim: true,
     default: null
   },
   messenger: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  address: {
     type: String,
     trim: true,
     default: null

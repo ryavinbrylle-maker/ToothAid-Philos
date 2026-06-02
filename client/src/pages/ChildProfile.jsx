@@ -26,12 +26,28 @@ import {
   CHILD_SCHOOL_GROUPS
 } from '../constants/childSchools';
 import { API_BASE_URL } from '../config';
-import { PARENT_FORM_FIELD_DEFS } from '../constants/parentFormFields';
+import { PARENT_FORM_FIELD_DEFS, PARENT_FORM_FIELD_GROUPS } from '../constants/parentFormFields';
 import EditableChipList from '../components/EditableChipList';
 import { getFollowUpTimingLabel, visitRequiresFollowUp } from '../utils/followUpTiming';
 
 const MEDICAL_ALLERGY_PRESETS = ['None known', 'Penicillin', 'Shellfish', 'Latex'];
-const MEDICAL_OTHER_NOTE_PRESETS = ['Asthma', 'ADHD', 'Takes regular medication'];
+const MEDICAL_HISTORY_PRESETS = ['G6PD', 'Hospitalization', 'Blue Baby', 'Asthma'];
+const GRADE_OPTIONS = ['Kindergarten', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Graduated', 'Teacher'];
+
+const formSectionStyle = {
+  border: '1px solid #e5e7eb',
+  borderRadius: 14,
+  padding: 16,
+  marginBottom: 16,
+  background: '#fff'
+};
+
+const formSectionTitleStyle = {
+  margin: '0 0 14px',
+  fontSize: '17px',
+  fontWeight: 800,
+  color: '#111827'
+};
 import { generateUniquePatientId, isValidPatientId, normalizePatientIdInput } from '../utils/patientId';
 import {
   CONDITIONS,
@@ -360,6 +376,7 @@ const ChildProfile = ({ token }) => {
     Object.fromEntries(PARENT_FORM_FIELD_DEFS.map((f) => [f.id, true]))
   );
   const [generatedFormUrl, setGeneratedFormUrl] = useState('');
+  const [generatedFormCopied, setGeneratedFormCopied] = useState(false);
   const [generatingFormUrl, setGeneratingFormUrl] = useState(false);
 
   // Refetch when childId changes or when navigating back to this profile (e.g. from Add Visit)
@@ -433,6 +450,7 @@ const ChildProfile = ({ token }) => {
     allergy: '',
     spedCategory: '',
     spedOtherDetail: '',
+    medicalHistory: '',
     behaviourFrankl: '',
     otherNotes: ''
   });
@@ -515,8 +533,11 @@ const ChildProfile = ({ token }) => {
       school: child.school || '',
       grade: child.grade || '',
       class: child.class || '',
+      guardianName: child.guardianName || '',
+      relationship: child.relationship || '',
       guardianPhone: child.guardianPhone || '',
       messenger: child.messenger || '',
+      address: child.address || '',
       patientId: child.patientId || '',
       priority: child.priority || 'P2',
       notes: child.notes || '',
@@ -524,6 +545,7 @@ const ChildProfile = ({ token }) => {
         allergy: mc.allergy != null ? String(mc.allergy) : '',
         spedCategory: mc.spedCategory != null ? String(mc.spedCategory) : '',
         spedOtherDetail: mc.spedOtherDetail != null ? String(mc.spedOtherDetail) : '',
+        medicalHistory: mc.medicalHistory != null ? String(mc.medicalHistory) : '',
         behaviourFrankl: mc.behaviourFrankl != null && mc.behaviourFrankl !== '' ? String(mc.behaviourFrankl) : '',
         otherNotes: mc.otherNotes != null ? String(mc.otherNotes) : ''
       }
@@ -562,6 +584,7 @@ const ChildProfile = ({ token }) => {
     }
     setGeneratingFormUrl(true);
     setGeneratedFormUrl('');
+    setGeneratedFormCopied(false);
     try {
       const res = await fetch(`${API_BASE_URL}/parent-form`, {
         method: 'POST',
@@ -656,6 +679,7 @@ const ChildProfile = ({ token }) => {
       const firstName = (childFormData.firstName || '').trim();
       const lastName = (childFormData.lastName || '').trim();
       const fullName = [firstName, lastName].filter(Boolean).join(' ');
+      const isTeacherRecord = childFormData.grade === 'Teacher';
       const updatedChild = {
         ...child,
         fullName,
@@ -669,8 +693,11 @@ const ChildProfile = ({ token }) => {
         grade: childFormData.grade.trim() || null,
         class: (childFormData.class || '').trim() || null,
         barangay: '',
+        guardianName: isTeacherRecord ? null : ((childFormData.guardianName || '').trim() || null),
+        relationship: isTeacherRecord ? null : ((childFormData.relationship || '').trim() || null),
         guardianPhone: childFormData.guardianPhone.trim() || null,
         messenger: (childFormData.messenger || '').trim() || null,
+        address: (childFormData.address || '').trim() || null,
         priority: childFormData.priority || 'P2',
         notes: childFormData.notes.trim() || null,
         updatedBy: username,
@@ -687,6 +714,7 @@ const ChildProfile = ({ token }) => {
         allergy: (rawMc.allergy || '').trim() || null,
         spedCategory: ['deaf', 'autism', 'others'].includes(sped) ? sped : null,
         spedOtherDetail: (rawMc.spedOtherDetail || '').trim() || null,
+        medicalHistory: (rawMc.medicalHistory || '').trim() || null,
         behaviourFrankl: Number.isFinite(bf) && bf >= 1 && bf <= 4 ? bf : null,
         otherNotes: (rawMc.otherNotes || '').trim() || null
       };
@@ -778,7 +806,7 @@ const ChildProfile = ({ token }) => {
   if (!child) {
     return (
       <div className="container">
-        <div className="empty-state">Child not found</div>
+        <div className="empty-state">Patient not found</div>
         <NavBar />
       </div>
     );
@@ -805,7 +833,7 @@ const ChildProfile = ({ token }) => {
       {/* ===== CHILD INFORMATION CARD ===== */}
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h2 style={{ fontSize: '18px', margin: 0 }}>Child Information</h2>
+          <h2 style={{ fontSize: '18px', margin: 0 }}>Patient Information</h2>
           {!isEditingChild && (
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <button
@@ -813,6 +841,7 @@ const ChildProfile = ({ token }) => {
                 onClick={() => {
                   setShowSendFormModal(true);
                   setGeneratedFormUrl('');
+                  setGeneratedFormCopied(false);
                 }}
                 style={{
                   padding: '8px 16px',
@@ -879,6 +908,8 @@ const ChildProfile = ({ token }) => {
 
         {isEditingChild ? (
           <form onSubmit={handleSaveChild}>
+            <section style={formSectionStyle}>
+              <h3 style={formSectionTitleStyle}>Basics</h3>
             <div className="form-group">
               <label>First Name *</label>
               <input
@@ -957,15 +988,14 @@ const ChildProfile = ({ token }) => {
                   value={childFormData.age}
                   onChange={handleChildFormChange}
                   min="0"
-                  max="18"
                 />
               </div>
             )}
 
             <div className="form-group">
-              <label>Sex *</label>
+              <label>Gender *</label>
               <select name="sex" value={childFormData.sex} onChange={handleChildFormChange} required>
-                <option value="" disabled>Select Sex</option>
+                <option value="" disabled>Select Gender</option>
                 <option value="M">Male</option>
                 <option value="F">Female</option>
               </select>
@@ -1005,13 +1035,9 @@ const ChildProfile = ({ token }) => {
               <label>Grade</label>
               <select name="grade" value={childFormData.grade} onChange={handleChildFormChange}>
                 <option value="">Select grade</option>
-                <option value="Kindergarten">Kindergarten</option>
-                <option value="Grade 1">Grade 1</option>
-                <option value="Grade 2">Grade 2</option>
-                <option value="Grade 3">Grade 3</option>
-                <option value="Grade 4">Grade 4</option>
-                <option value="Grade 5">Grade 5</option>
-                <option value="Grade 6">Grade 6</option>
+                {GRADE_OPTIONS.map((grade) => (
+                  <option key={grade} value={grade}>{grade}</option>
+                ))}
               </select>
             </div>
 
@@ -1024,17 +1050,67 @@ const ChildProfile = ({ token }) => {
                 onChange={handleChildFormChange}
               />
             </div>
+            </section>
 
-            <div
-              className="form-group"
-              style={{
-                border: '2px solid #22c55e',
-                borderRadius: 12,
-                padding: 14,
-                background: 'rgba(34, 197, 94, 0.04)'
-              }}
-            >
-              <h3 style={{ margin: '0 0 12px', fontSize: '16px', color: '#14532d' }}>Medical condition</h3>
+            <section style={formSectionStyle}>
+              <h3 style={formSectionTitleStyle}>Contact</h3>
+              {childFormData.grade !== 'Teacher' && (
+                <>
+                  <div className="form-group">
+                    <label>Guardian Name</label>
+                    <input
+                      type="text"
+                      name="guardianName"
+                      value={childFormData.guardianName || ''}
+                      onChange={handleChildFormChange}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Relationship</label>
+                    <input
+                      type="text"
+                      name="relationship"
+                      value={childFormData.relationship || ''}
+                      onChange={handleChildFormChange}
+                      placeholder="e.g. Mother"
+                    />
+                  </div>
+                </>
+              )}
+              <div className="form-group">
+                <label>Phone</label>
+                <input
+                  type="tel"
+                  name="guardianPhone"
+                  value={childFormData.guardianPhone}
+                  onChange={handleChildFormChange}
+                  placeholder="09123456789"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Messenger</label>
+                <input
+                  type="text"
+                  name="messenger"
+                  value={childFormData.messenger}
+                  onChange={handleChildFormChange}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Address</label>
+                <textarea
+                  name="address"
+                  value={childFormData.address || ''}
+                  onChange={handleChildFormChange}
+                  rows={2}
+                />
+              </div>
+            </section>
+
+            <section style={formSectionStyle}>
+              <h3 style={formSectionTitleStyle}>Medical</h3>
               <div className="form-group">
                 <label>Allergy</label>
                 <textarea
@@ -1059,27 +1135,29 @@ const ChildProfile = ({ token }) => {
                 </div>
               </div>
               <div className="form-group">
-                <label>SPED</label>
-                <select
-                  value={childFormData.medicalCondition?.spedCategory ?? ''}
-                  onChange={(e) => handleMedicalFormChange('spedCategory', e.target.value)}
-                >
-                  <option value="">—</option>
-                  <option value="deaf">Deaf / hard of hearing</option>
-                  <option value="autism">Autism spectrum</option>
-                  <option value="others">Other</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>SPED (other details)</label>
-                <input
-                  type="text"
-                  value={childFormData.medicalCondition?.spedOtherDetail ?? ''}
-                  onChange={(e) => handleMedicalFormChange('spedOtherDetail', e.target.value)}
+                <label>Medical History</label>
+                <textarea
+                  rows={2}
+                  value={childFormData.medicalCondition?.medicalHistory ?? ''}
+                  onChange={(e) => handleMedicalFormChange('medicalHistory', e.target.value)}
                 />
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: 6 }}>
+                    Quick phrases (tap to append line; long-press to edit shortcuts)
+                  </div>
+                  <EditableChipList
+                    storageKey="toothaid_presets_medical_history"
+                    defaultList={MEDICAL_HISTORY_PRESETS}
+                    mode="apply"
+                    onApply={(name) => {
+                      const cur = (childFormData.medicalCondition?.medicalHistory ?? '').trim();
+                      handleMedicalFormChange('medicalHistory', cur ? `${cur}\n${name}` : name);
+                    }}
+                  />
+                </div>
               </div>
               <div className="form-group">
-                <label>Behaviour (Frankl scale)</label>
+                <label>Behavior (Frankl scale)</label>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {[1, 2, 3, 4].map((n) => (
                     <button
@@ -1113,50 +1191,7 @@ const ChildProfile = ({ token }) => {
                   </button>
                 </div>
               </div>
-              <div className="form-group">
-                <label>Other notes</label>
-                <textarea
-                  rows={2}
-                  value={childFormData.medicalCondition?.otherNotes ?? ''}
-                  onChange={(e) => handleMedicalFormChange('otherNotes', e.target.value)}
-                />
-                <div style={{ marginTop: 8 }}>
-                  <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: 6 }}>
-                    Quick phrases (tap to append line; long-press to edit shortcuts)
-                  </div>
-                  <EditableChipList
-                    storageKey="toothaid_presets_medical_other_notes"
-                    defaultList={MEDICAL_OTHER_NOTE_PRESETS}
-                    mode="apply"
-                    onApply={(name) => {
-                      const cur = (childFormData.medicalCondition?.otherNotes ?? '').trim();
-                      handleMedicalFormChange('otherNotes', cur ? `${cur}\n${name}` : name);
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label>Guardian Phone</label>
-              <input
-                type="tel"
-                name="guardianPhone"
-                value={childFormData.guardianPhone}
-                onChange={handleChildFormChange}
-                placeholder="09123456789"
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Messenger</label>
-              <input
-                type="text"
-                name="messenger"
-                value={childFormData.messenger}
-                onChange={handleChildFormChange}
-              />
-            </div>
+            </section>
 
             <div className="form-group">
               <label>Notes (optional)</label>
@@ -1165,7 +1200,7 @@ const ChildProfile = ({ token }) => {
                 value={childFormData.notes}
                 onChange={handleChildFormChange}
                 rows="3"
-                placeholder="Any notes about this child..."
+                placeholder="Any notes about this patient..."
               />
             </div>
 
@@ -1234,7 +1269,7 @@ const ChildProfile = ({ token }) => {
                 <div style={{ marginBottom: '14px' }}>
                   <PatientNameBlock child={child} nameTag="div" />
                 </div>
-                <p><strong>Sex:</strong> {child.sex}</p>
+                <p><strong>Gender:</strong> {child.sex}</p>
                 {child.dob && <p><strong>Date of Birth:</strong> {formatDate(child.dob)}</p>}
                 {(getAgeFromDOB(child.dob) != null || child.age != null) && (
                   <p><strong>Age:</strong> {getAgeFromDOB(child.dob) ?? child.age} years</p>
@@ -1242,12 +1277,17 @@ const ChildProfile = ({ token }) => {
                 <p><strong>School:</strong> {child.school}</p>
                 {child.grade && <p><strong>Grade:</strong> {child.grade}</p>}
                 {child.class && <p><strong>Class:</strong> {child.class}</p>}
-                {child.guardianPhone && <p><strong>Guardian Phone:</strong> {child.guardianPhone}</p>}
+                {child.grade !== 'Teacher' && child.guardianName && <p><strong>Guardian Name:</strong> {child.guardianName}</p>}
+                {child.grade !== 'Teacher' && child.relationship && <p><strong>Relationship:</strong> {child.relationship}</p>}
+                {child.guardianPhone && <p><strong>Phone:</strong> {child.guardianPhone}</p>}
                 {child.messenger && (
                   <p>
                     <strong>Messenger:</strong>{' '}
                     <span style={{ wordBreak: 'break-word' }}>{child.messenger}</span>
                   </p>
+                )}
+                {child.address && (
+                  <p><strong>Address:</strong>{' '}<span style={{ whiteSpace: 'pre-wrap', color: '#555' }}>{child.address}</span></p>
                 )}
                 {child.notes && (
                   <p><strong>Notes:</strong>{' '}<span style={{ whiteSpace: 'pre-wrap', color: '#555' }}>{child.notes}</span></p>
@@ -1428,12 +1468,12 @@ const ChildProfile = ({ token }) => {
           padding: '20px'
         }}>
           <div className="card" style={{ maxWidth: '400px', width: '100%' }}>
-            <h3 style={{ color: 'var(--color-accent)', marginBottom: '16px', fontSize: '18px' }}>Delete Child?</h3>
+            <h3 style={{ color: 'var(--color-accent)', marginBottom: '16px', fontSize: '18px' }}>Delete Patient?</h3>
             <p style={{ marginBottom: '8px', fontSize: '16px' }}>
               Are you sure you want to delete <strong>{formatChildDisplayName(child)}</strong>?
             </p>
             <p style={{ marginBottom: '16px', color: 'var(--color-accent)', fontSize: '16px' }}>
-              This will also delete all {visits.length} visit record(s) for this child. This action cannot be undone.
+              This will also delete all {visits.length} visit record(s) for this patient. This action cannot be undone.
             </p>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button 
@@ -1486,14 +1526,6 @@ const ChildProfile = ({ token }) => {
                 !Array.isArray(child.medicalCondition)
                   ? child.medicalCondition
                   : {};
-              const spedLabel =
-                mc.spedCategory === 'deaf'
-                  ? 'Deaf / hard of hearing'
-                  : mc.spedCategory === 'autism'
-                    ? 'Autism spectrum'
-                    : mc.spedCategory === 'others'
-                      ? 'Other'
-                      : '—';
               return (
                 <div style={{ fontSize: '14px', color: '#374151', lineHeight: 1.5 }}>
                   <p style={{ margin: '4px 0' }}>
@@ -1501,16 +1533,14 @@ const ChildProfile = ({ token }) => {
                     {mc.allergy != null && String(mc.allergy).trim() !== '' ? mc.allergy : '—'}
                   </p>
                   <p style={{ margin: '4px 0' }}>
-                    <strong>SPED:</strong> {spedLabel}
-                    {mc.spedOtherDetail ? ` — ${mc.spedOtherDetail}` : ''}
+                    <strong>Medical History:</strong>{' '}
+                    <span style={{ whiteSpace: 'pre-wrap' }}>
+                      {mc.medicalHistory != null && String(mc.medicalHistory).trim() !== '' ? mc.medicalHistory : '—'}
+                    </span>
                   </p>
                   <p style={{ margin: '4px 0' }}>
-                    <strong>Behaviour (Frankl):</strong>{' '}
+                    <strong>Behavior (Frankl):</strong>{' '}
                     {mc.behaviourFrankl != null && mc.behaviourFrankl !== '' ? mc.behaviourFrankl : '—'}
-                  </p>
-                  <p style={{ margin: '4px 0' }}>
-                    <strong>Other notes:</strong>{' '}
-                    {mc.otherNotes != null && String(mc.otherNotes).trim() !== '' ? mc.otherNotes : '—'}
                   </p>
                 </div>
               );
@@ -1716,22 +1746,60 @@ const ChildProfile = ({ token }) => {
           }}
         >
           <div className="card" style={{ maxWidth: 520, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
-            <h3 style={{ marginTop: 0 }}>Send a form to guardian</h3>
+            <h3 style={{ marginTop: 0 }}>Send a form to parents</h3>
             <p style={{ fontSize: '14px', color: '#4b5563', lineHeight: 1.45 }}>
               Choose which fields appear on the public page. The link expires after one submission or after 24 hours.
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
-              {PARENT_FORM_FIELD_DEFS.map((f) => (
-                <label key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '14px' }}>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(sendFormFields[f.id])}
-                    onChange={(e) =>
-                      setSendFormFields((prev) => ({ ...prev, [f.id]: e.target.checked }))
-                    }
-                  />
-                  {f.label}
-                </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 14 }}>
+              {PARENT_FORM_FIELD_GROUPS.map((group) => (
+                <section
+                  key={group.id}
+                  style={{
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 12,
+                    padding: 12,
+                    background: '#f9fafb'
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 10,
+                      marginBottom: 8
+                    }}
+                  >
+                    <h4 style={{ margin: 0, fontSize: 15 }}>{group.title}</h4>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        const allSelected = group.fields.every((f) => sendFormFields[f.id]);
+                        setSendFormFields((prev) => ({
+                          ...prev,
+                          ...Object.fromEntries(group.fields.map((f) => [f.id, !allSelected]))
+                        }));
+                      }}
+                    >
+                      {group.fields.every((f) => sendFormFields[f.id]) ? 'Clear' : 'Select all'}
+                    </button>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
+                    {group.fields.map((f) => (
+                      <label key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '14px' }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(sendFormFields[f.id])}
+                          onChange={(e) =>
+                            setSendFormFields((prev) => ({ ...prev, [f.id]: e.target.checked }))
+                          }
+                        />
+                        {f.label}
+                      </label>
+                    ))}
+                  </div>
+                </section>
               ))}
             </div>
             <button
@@ -1751,9 +1819,13 @@ const ChildProfile = ({ token }) => {
                   type="button"
                   className="btn btn-secondary"
                   style={{ width: '100%', marginTop: 8 }}
-                  onClick={() => void navigator.clipboard.writeText(generatedFormUrl)}
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(generatedFormUrl);
+                    setGeneratedFormCopied(true);
+                    window.setTimeout(() => setGeneratedFormCopied(false), 1800);
+                  }}
                 >
-                  Copy to clipboard
+                  {generatedFormCopied ? 'Copied!' : 'Copy to clipboard'}
                 </button>
               </div>
             ) : null}

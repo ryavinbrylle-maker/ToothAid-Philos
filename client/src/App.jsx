@@ -23,9 +23,13 @@ function App() {
   const syncInProgress = useRef(false);
   const lastSyncTime = useRef(0);
 
+  const isParentFormPage = () =>
+    typeof window !== 'undefined' && window.location.pathname.startsWith('/parent-form/');
+
   // Perform auto-sync
   const doAutoSync = async (trigger) => {
     // Guards: no token, already syncing, or too soon (10s cooldown)
+    if (isParentFormPage()) return;
     if (!token) return;
     if (syncInProgress.current) return;
     if (Date.now() - lastSyncTime.current < 10000) return;
@@ -119,14 +123,14 @@ function App() {
     <BrowserRouter>
       <div className="app">
         {/* Offline Banner */}
-        {!isOnline && (
+        {!isOnline && !isParentFormPage() && (
           <div className="offline-banner">
             Offline Mode - Changes will sync when online
           </div>
         )}
         
         {/* Sync Toast */}
-        {syncToast && (
+        {syncToast && !isParentFormPage() && (
           <div 
             className={`sync-toast ${syncToast.type}`}
             onClick={() => setSyncToast(null)}
@@ -136,7 +140,7 @@ function App() {
         )}
         
         {/* Syncing Indicator */}
-        {isSyncing && (
+        {isSyncing && !isParentFormPage() && (
           <div className="syncing-indicator">
             Syncing...
           </div>

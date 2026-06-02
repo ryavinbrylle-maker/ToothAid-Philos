@@ -694,7 +694,7 @@ const BuildRoster = ({ token }) => {
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0 }}>Child Information</h3>
+              <h3 style={{ margin: 0 }}>Patient Information</h3>
               <button
                 type="button"
                 onClick={() => setViewChildDetail(null)}

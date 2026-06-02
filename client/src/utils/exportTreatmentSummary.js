@@ -302,7 +302,7 @@ export async function downloadTreatmentSummaryExcel(visits, range, month, year, 
     overviewRows.push([]);
   }
   overviewRows.push(['Total visits (export scope)', filtered.length]);
-  overviewRows.push(['Distinct children with visits', new Set(filtered.map((v) => v.childId)).size]);
+  overviewRows.push(['Distinct patients with visits', new Set(filtered.map((v) => v.childId)).size]);
   overviewRows.push([
     'Distinct schools (from visits)',
     new Set(
