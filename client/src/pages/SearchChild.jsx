@@ -318,7 +318,6 @@ const SearchChild = ({ token }) => {
         <div style={{ paddingBottom: '78px' }}>
           {filtered.map((child) => {
             const fu = followUpByChild.get(child.childId);
-            const followUpDueLabel = fu?.dueAt ? formatFollowUpDueAt(fu.dueAt) : null;
             const followUpCountdown = fu?.dueAt ? getFollowUpDueCountdownLabel(fu.dueAt) : null;
             const followUpTopRightLabel =
               followUpCountdown ||
