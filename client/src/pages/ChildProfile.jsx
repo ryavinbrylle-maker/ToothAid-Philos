@@ -424,7 +424,9 @@ const ChildProfile = ({ token }) => {
     setVisits(sortedVisits);
     const latestFollowUpVisit = sortedVisits.find((v) => visitRequiresFollowUp(v));
     setActiveFollowUpLabel(
-      latestFollowUpVisit ? getFollowUpTimingLabel(latestFollowUpVisit.followUpPriority) : null
+      latestFollowUpVisit
+        ? getFollowUpTimingLabel(latestFollowUpVisit.followUpPriority, latestFollowUpVisit.followUpDays)
+        : null
     );
     setLoading(false);
   };

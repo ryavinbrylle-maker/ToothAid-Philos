@@ -9,9 +9,12 @@ import { notifyError, notifySuccess } from '../utils/notify';
 import { toYmd, ymdToIsoUtc8 } from '../utils/dates';
 import {
   computeFollowUpDueAt,
-  FOLLOW_UP_TIMING_OPTIONS,
-  FOLLOW_UP_WITHIN_14_DAYS,
-  normalizeFollowUpTiming
+  FOLLOW_UP_CUSTOM_DAYS,
+  FOLLOW_UP_FORM_OPTIONS,
+  FOLLOW_UP_WITHIN_7_DAYS,
+  normalizeFollowUpTiming,
+  resolveFollowUpDays,
+  visitFollowUpToForm
 } from '../utils/followUpTiming';
 import {
   CONDITIONS,
@@ -254,7 +257,8 @@ export default function AddVisit({ token }) {
   const [chiefComplaint, setChiefComplaint] = useState('');
   const [visitNotes, setVisitNotes] = useState('');
   const [requiresFollowUp, setRequiresFollowUp] = useState(false);
-  const [followUpPriority, setFollowUpPriority] = useState('WITHIN_14_DAYS');
+  const [followUpPriority, setFollowUpPriority] = useState(FOLLOW_UP_WITHIN_7_DAYS);
+  const [followUpCustomDays, setFollowUpCustomDays] = useState('14');
 
   const [dentition, setDentition] = useState('PERMANENT');
   const [toothRecords, setToothRecords] = useState({});
@@ -329,7 +333,9 @@ export default function AddVisit({ token }) {
       setMedications(normalizeMedicationsForForm(v.medications));
       setMedDraft({ name: '', dosage: '', frequencyPerDay: '', days: '' });
       setRequiresFollowUp(v.requiresFollowUp === true || v.requiresFollowUp === 'true');
-      setFollowUpPriority(normalizeFollowUpTiming(v.followUpPriority));
+      const fuForm = visitFollowUpToForm(v.followUpPriority, v.followUpDays);
+      setFollowUpPriority(fuForm.priority);
+      setFollowUpCustomDays(fuForm.customDays);
       setInitializing(false);
     })();
     return () => {
@@ -647,6 +653,15 @@ export default function AddVisit({ token }) {
       const notesForSave = visitNotes.trim() || null;
       const examinationNotesForSave = examinationNotes.trim() || null;
 
+      const followUpTiming = requiresFollowUp ? normalizeFollowUpTiming(followUpPriority) : null;
+      const followUpDaysSaved =
+        requiresFollowUp && followUpTiming === FOLLOW_UP_CUSTOM_DAYS
+          ? resolveFollowUpDays(followUpTiming, followUpCustomDays)
+          : null;
+      const followUpDueAtSaved = requiresFollowUp
+        ? computeFollowUpDueAt(dateIso, followUpTiming, followUpDaysSaved)
+        : null;
+
       let visitData;
       if (isEditMode) {
         const existing = await getVisit(editVisitIdParam);
@@ -675,10 +690,9 @@ export default function AddVisit({ token }) {
           medications: medicationsForSave,
           notes: notesForSave,
           requiresFollowUp: Boolean(requiresFollowUp),
-          followUpPriority: requiresFollowUp ? normalizeFollowUpTiming(followUpPriority) : null,
-          followUpDueAt: requiresFollowUp
-            ? computeFollowUpDueAt(dateIso, followUpPriority)
-            : null,
+          followUpPriority: followUpTiming,
+          followUpDays: followUpDaysSaved,
+          followUpDueAt: followUpDueAtSaved,
           createdBy: existing.createdBy || username,
           createdAt: existing.createdAt || now,
           updatedBy: username,
@@ -709,10 +723,9 @@ export default function AddVisit({ token }) {
           medications: medicationsForSave,
           notes: notesForSave,
           requiresFollowUp: Boolean(requiresFollowUp),
-          followUpPriority: requiresFollowUp ? normalizeFollowUpTiming(followUpPriority) : null,
-          followUpDueAt: requiresFollowUp
-            ? computeFollowUpDueAt(dateIso, followUpPriority)
-            : null,
+          followUpPriority: followUpTiming,
+          followUpDays: followUpDaysSaved,
+          followUpDueAt: followUpDueAtSaved,
           createdBy: username,
           createdAt: now
         };
@@ -1168,7 +1181,10 @@ export default function AddVisit({ token }) {
             onChange={(e) => {
               const on = e.target.checked;
               setRequiresFollowUp(on);
-              if (!on) setFollowUpPriority(FOLLOW_UP_WITHIN_14_DAYS);
+              if (!on) {
+                setFollowUpPriority(FOLLOW_UP_WITHIN_7_DAYS);
+                setFollowUpCustomDays('14');
+              }
             }}
           />
           <span style={{ fontWeight: 650 }}>Requires follow-up appointment</span>
@@ -1181,12 +1197,27 @@ export default function AddVisit({ token }) {
               onChange={(e) => setFollowUpPriority(e.target.value)}
               className="form-control"
             >
-              {FOLLOW_UP_TIMING_OPTIONS.map((opt) => (
+              {FOLLOW_UP_FORM_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>
               ))}
             </select>
+            {normalizeFollowUpTiming(followUpPriority) === FOLLOW_UP_CUSTOM_DAYS && (
+              <div style={{ marginTop: '10px' }}>
+                <label htmlFor="follow-up-custom-days">Number of days</label>
+                <input
+                  id="follow-up-custom-days"
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={followUpCustomDays}
+                  onChange={(e) => setFollowUpCustomDays(e.target.value)}
+                  className="form-control"
+                  style={{ marginTop: '6px' }}
+                />
+              </div>
+            )}
             <p style={{ fontSize: '12px', color: 'var(--color-muted)', margin: '8px 0 0' }}>
               After save, use Schedule follow-up on Home to book the next slot.
             </p>

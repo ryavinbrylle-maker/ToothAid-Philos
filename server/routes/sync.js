@@ -17,7 +17,7 @@ function normalizeTreatmentTypes(value) {
   return [];
 }
 
-const FOLLOW_UP_TIMING_VALUES = ['WITHIN_7_DAYS', 'WITHIN_14_DAYS', 'WHENEVER'];
+const FOLLOW_UP_TIMING_VALUES = ['WITHIN_7_DAYS', 'WITHIN_14_DAYS', 'WHENEVER', 'CUSTOM_DAYS'];
 
 function normalizeFollowUpTiming(raw) {
   const s = String(raw ?? '').trim();
@@ -25,7 +25,14 @@ function normalizeFollowUpTiming(raw) {
   if (s === 'P0' || s === 'P1') return 'WITHIN_7_DAYS';
   if (s === 'P2') return 'WITHIN_14_DAYS';
   if (s === 'P3') return 'WHENEVER';
-  return 'WITHIN_14_DAYS';
+  return 'WITHIN_7_DAYS';
+}
+
+function parseFollowUpDays(value) {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 1) return null;
+  return Math.floor(n);
 }
 
 function parseFollowUpDueAt(value) {
@@ -176,6 +183,12 @@ router.post('/push', authenticateToken, async (req, res) => {
             followUpPriority:
               payload.requiresFollowUp === true || payload.requiresFollowUp === 'true'
                 ? normalizeFollowUpTiming(payload.followUpPriority)
+                : null,
+            followUpDays:
+              payload.requiresFollowUp === true || payload.requiresFollowUp === 'true'
+                ? normalizeFollowUpTiming(payload.followUpPriority) === 'CUSTOM_DAYS'
+                  ? parseFollowUpDays(payload.followUpDays)
+                  : null
                 : null,
             followUpDueAt:
               payload.requiresFollowUp === true || payload.requiresFollowUp === 'true'
@@ -344,6 +357,16 @@ router.post('/push', authenticateToken, async (req, res) => {
                   : null
                 : existingVisit?.followUpPriority != null
                   ? normalizeFollowUpTiming(existingVisit.followUpPriority)
+                  : null,
+            followUpDays:
+              payload.requiresFollowUp !== undefined
+                ? payload.requiresFollowUp === true || payload.requiresFollowUp === 'true'
+                  ? normalizeFollowUpTiming(payload.followUpPriority) === 'CUSTOM_DAYS'
+                    ? parseFollowUpDays(payload.followUpDays)
+                    : null
+                  : null
+                : existingVisit?.followUpDays != null
+                  ? parseFollowUpDays(existingVisit.followUpDays)
                   : null,
             followUpDueAt:
               payload.requiresFollowUp !== undefined

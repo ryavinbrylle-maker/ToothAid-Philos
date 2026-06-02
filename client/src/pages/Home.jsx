@@ -50,9 +50,28 @@ const uniqueChildOrderFromSched = (schedList) => {
   return out;
 };
 
-const MAX_SLOT = 3;
 const MAX_REMINDER_ROWS = 10;
 const SEND_REMINDER_DAYS = 14;
+
+/** Appointment statuses shown on Today's AM/PM roster (not a shrinking waiting list). */
+const TODAY_BOARD_STATUSES = new Set(['SCHEDULED', 'ATTENDED', 'CANCELLED', 'RESCHEDULED']);
+
+const appointmentStatusToQueueStatus = (apptStatus) => {
+  if (apptStatus === 'SCHEDULED') return 'WAITING';
+  if (apptStatus === 'ATTENDED' || apptStatus === 'CANCELLED' || apptStatus === 'RESCHEDULED') return apptStatus;
+  return 'WAITING';
+};
+
+/** Latest appointment row status per child (creation order tie-break). */
+const latestQueueStatusByChild = (apptList) => {
+  const sorted = sortAppointmentsByCreated(apptList);
+  const map = new Map();
+  for (const a of sorted) {
+    if (!a?.childId) continue;
+    map.set(a.childId, appointmentStatusToQueueStatus(a.status));
+  }
+  return map;
+};
 
 const scheduleStatusRank = (status) => {
   if (status === 'MISSED') return 0;
@@ -60,7 +79,7 @@ const scheduleStatusRank = (status) => {
   return 2;
 };
 
-const followUpTimingSortValue = (appt) => followUpSortRank(appt?.followUpTiming);
+const followUpTimingSortValue = (appt) => followUpSortRank(appt?.followUpTiming, appt?.followUpDays);
 
 /** One row per child across missed/cancelled appointments and visit-flagged follow-ups. */
 const compareUnifiedScheduleCandidates = (a, b) => {
@@ -119,13 +138,14 @@ const PhoneIcon = () => (
 );
 
 /**
- * Rebuild AM/PM slots: keep prior order + statuses for children still scheduled,
- * then fill empty slots from schedule order. Caller must pass existing meta read
+ * Rebuild AM/PM roster: keep prior order + statuses for children still on today's board,
+ * then fill empty slots from appointment order. Caller must pass existing meta read
  * AFTER async appointment loads to avoid overwriting in-flight status updates.
  */
-const mergeQueueWindow = (scheduledForWindow, prevItems, maxN) => {
-  const schedIds = uniqueChildOrderFromSched(scheduledForWindow);
+const mergeQueueWindow = (boardForWindow, prevItems, maxN) => {
+  const schedIds = uniqueChildOrderFromSched(boardForWindow);
   const allowed = new Set(schedIds);
+  const apptStatusByChild = latestQueueStatusByChild(boardForWindow);
   const statusById = new Map();
   const ordered = [];
 
@@ -134,7 +154,7 @@ const mergeQueueWindow = (scheduledForWindow, prevItems, maxN) => {
       if (!it?.childId || !allowed.has(it.childId)) continue;
       if (ordered.includes(it.childId)) continue;
       ordered.push(it.childId);
-      statusById.set(it.childId, it.status || 'WAITING');
+      statusById.set(it.childId, it.status || apptStatusByChild.get(it.childId) || 'WAITING');
     }
   }
 
@@ -145,7 +165,7 @@ const mergeQueueWindow = (scheduledForWindow, prevItems, maxN) => {
 
   return ordered.slice(0, maxN).map((childId) => ({
     childId,
-    status: statusById.get(childId) || 'WAITING'
+    status: statusById.get(childId) || apptStatusByChild.get(childId) || 'WAITING'
   }));
 };
 
@@ -153,6 +173,7 @@ const Home = ({ setToken }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [queue, setQueue] = useState({ AM: [], PM: [] }); // [{ childId, status }]
+  const [slotQuota, setSlotQuota] = useState({ AM: 0, PM: 0 });
   const [expandedKey, setExpandedKey] = useState(null); // `${timeWindow}:${childId}`
   /** @type {{ [childId: string]: { name: string, patientId: string } }} */
   const [queueChildById, setQueueChildById] = useState({});
@@ -205,16 +226,26 @@ const Home = ({ setToken }) => {
       if (!todayClinicDays || todayClinicDays.length === 0) {
         const empty = { AM: [], PM: [] };
         setQueue(empty);
+        setSlotQuota({ AM: 0, PM: 0 });
         await setMeta(metaKey, empty);
         setLoading(false);
         return;
       }
 
+      const stableDayId = `clinicday-${todayKey}`;
+      const stable = todayClinicDays.find((d) => d.clinicDayId === stableDayId) || null;
+      const todayClinicDay =
+        stable ||
+        todayClinicDays.slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] ||
+        null;
+      const amMax = Math.max(0, Number(todayClinicDay?.amCapacity) || 0);
+      const pmMax = Math.max(0, Number(todayClinicDay?.pmCapacity) || 0);
+
       const apptsArrays = await Promise.all(todayClinicDays.map((d) => getAppointmentsByClinicDay(d.clinicDayId)));
       const appts = apptsArrays.flat();
-      const scheduled = appts.filter((a) => a.status === 'SCHEDULED');
-      const schedAm = scheduled.filter((a) => a.timeWindow === 'AM');
-      const schedPm = scheduled.filter((a) => a.timeWindow === 'PM');
+      const boardAppts = appts.filter((a) => TODAY_BOARD_STATUSES.has(a.status));
+      const boardAm = boardAppts.filter((a) => a.timeWindow === 'AM');
+      const boardPm = boardAppts.filter((a) => a.timeWindow === 'PM');
 
       // Read saved order + statuses only AFTER async work so we never clobber Attended/etc. with stale meta.
       const existing = await getMeta(metaKey);
@@ -224,10 +255,11 @@ const Home = ({ setToken }) => {
           : null;
 
       const nextQueue = {
-        AM: mergeQueueWindow(schedAm, existingQueue?.AM, MAX_SLOT),
-        PM: mergeQueueWindow(schedPm, existingQueue?.PM, MAX_SLOT)
+        AM: mergeQueueWindow(boardAm, existingQueue?.AM, amMax),
+        PM: mergeQueueWindow(boardPm, existingQueue?.PM, pmMax)
       };
 
+      setSlotQuota({ AM: amMax, PM: pmMax });
       setQueue(nextQueue);
       await setMeta(metaKey, nextQueue);
       setLoading(false);
@@ -313,11 +345,12 @@ const Home = ({ setToken }) => {
               childId: v.childId,
               status: 'VISIT_FOLLOWUP',
               followUpTiming: timing,
+              followUpDays: v.followUpDays ?? null,
               createdAt: ts,
               followUpDueAt:
                 v.followUpDueAt != null && String(v.followUpDueAt).trim() !== ''
                   ? new Date(v.followUpDueAt).toISOString()
-                  : computeFollowUpDueAt(v.date, timing),
+                  : computeFollowUpDueAt(v.date, timing, v.followUpDays),
               note: v.notes != null ? String(v.notes) : null,
               timeWindow: 'AM'
             },
@@ -375,7 +408,8 @@ const Home = ({ setToken }) => {
               status: row.appt.status,
               statusDisplay: isVisit ? 'Visit follow-up' : row.appt.status,
               followUpTiming: timing,
-              followUpLabel: getFollowUpTimingLabel(timing),
+              followUpDays: row.appt.followUpDays ?? null,
+              followUpLabel: getFollowUpTimingLabel(timing, row.appt.followUpDays),
               missedCount,
               dateKey: row.dateKey,
               location: row.location,
@@ -551,7 +585,7 @@ const Home = ({ setToken }) => {
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '14px' }}>
         <div>
           <div style={{ fontSize: '22px', fontWeight: 700, marginBottom: '2px' }}>Today</div>
-          <div style={{ fontSize: '13px', color: 'var(--color-muted)' }}>Waiting list ({todayKey})</div>
+          <div style={{ fontSize: '13px', color: 'var(--color-muted)' }}>Today's appointments ({todayKey})</div>
         </div>
         <button
           onClick={() => {
@@ -665,7 +699,7 @@ const Home = ({ setToken }) => {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {followUpScheduleRows.map((row) => {
-                    const urgent = isUrgentFollowUpTiming(row.followUpTiming);
+                    const urgent = isUrgentFollowUpTiming(row.followUpTiming, row.followUpDays);
                     const statusLine = [
                       row.statusDisplay,
                       !row.visitSource && row.missedCount > 0
@@ -872,7 +906,7 @@ const Home = ({ setToken }) => {
                   Add appointment
                 </button>
               </div>
-              <div style={{ fontSize: '12px', color: 'var(--color-muted)' }}>{items.length} / 3</div>
+              <div style={{ fontSize: '12px', color: 'var(--color-muted)' }}>{items.length} / {slotQuota[tw]}</div>
             </div>
 
             {items.length === 0 ? (
