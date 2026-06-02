@@ -9,8 +9,9 @@ import { notifyError, notifySuccess } from '../utils/notify';
  * @param {object | null} props.child
  * @param {() => void} props.onClose
  * @param {(child: object) => string} [props.getSmsBody] SMS template from child; default "Regarding {name}."
+ * @param {boolean} [props.showMessageComposer] Show editable message + copy section (default: true)
  */
-export default function PatientContactModal({ child, onClose, getSmsBody }) {
+export default function PatientContactModal({ child, onClose, getSmsBody, showMessageComposer = true }) {
   const messengerRaw = child?.messenger != null ? String(child.messenger).trim() : '';
   const messengerIsHttpUrl = messengerRaw !== '' && /^https?:\/\//i.test(messengerRaw);
 
@@ -94,20 +95,22 @@ export default function PatientContactModal({ child, onClose, getSmsBody }) {
                 <span style={{ color: 'var(--color-muted)' }}>—</span>
               )}
             </div>
-            <div className="form-group" style={{ marginBottom: '12px' }}>
-              <label style={{ display: 'block', marginBottom: '4px', fontWeight: 600 }}>Reminder message</label>
-              <textarea
-                value={smsDraft}
-                onChange={(e) => setSmsDraft(e.target.value)}
-                rows={4}
-                placeholder="Reminder text"
-              />
-              <div style={{ marginTop: '8px' }}>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => void copySmsToClipboard()}>
-                  Copy message
-                </button>
+            {showMessageComposer && (
+              <div className="form-group" style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', marginBottom: '4px', fontWeight: 600 }}>Reminder message</label>
+                <textarea
+                  value={smsDraft}
+                  onChange={(e) => setSmsDraft(e.target.value)}
+                  rows={4}
+                  placeholder="Reminder text"
+                />
+                <div style={{ marginTop: '8px' }}>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => void copySmsToClipboard()}>
+                    Copy message
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label style={{ display: 'block', marginBottom: '4px', fontWeight: 600 }}>Messenger</label>
               {messengerRaw !== '' ? (

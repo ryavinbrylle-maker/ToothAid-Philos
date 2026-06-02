@@ -616,6 +616,14 @@ export const getAllScheduledAppointments = async () => {
     .toArray();
 };
 
+export const getAppointmentsByStatus = async (status) => {
+  if (!status) return [];
+  return await db.appointments
+    .where('status')
+    .equals(status)
+    .toArray();
+};
+
 export const upsertAppointment = async (appointmentData) => {
   await db.appointments.put(appointmentData);
   return appointmentData;

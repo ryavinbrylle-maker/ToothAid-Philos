@@ -2,7 +2,21 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import NavBar from '../components/NavBar';
 import PageHeader from '../components/PageHeader';
-import { addToOutbox, getAllClinicDays, getAppointmentsByClinicDay, syncPush, upsertClinicDay } from '../db/indexedDB';
+import AppointmentProcedureField from '../components/AppointmentProcedureField';
+import PatientContactModal from '../components/PatientContactModal';
+import { formatChildDisplayName } from '../utils/displayName';
+import { resolveProcedureTypeForSave } from '../constants/appointmentProcedures';
+import {
+  addToOutbox,
+  getAllClinicDays,
+  getAppointmentsByClinicDay,
+  getAppointmentsByStatus,
+  getChild,
+  searchChildren,
+  syncPush,
+  upsertAppointment,
+  upsertClinicDay
+} from '../db/indexedDB';
 import { isActiveBookedSlot } from '../utils/appointmentStatus';
 import { toYmd } from '../utils/dates';
 import { notifyError, notifySuccess } from '../utils/notify';
@@ -68,6 +82,21 @@ export default function Schedule({ token }) {
   const [batchAm, setBatchAm] = useState('3');
   const [batchPm, setBatchPm] = useState('3');
   const [batchSaving, setBatchSaving] = useState(false);
+  const [waitingList, setWaitingList] = useState([]);
+  const [showAddWaitlist, setShowAddWaitlist] = useState(false);
+  const [waitlistSaving, setWaitlistSaving] = useState(false);
+  const [searchQ, setSearchQ] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [pickedChildId, setPickedChildId] = useState('');
+  const [pickedChild, setPickedChild] = useState(null);
+  const [pickedProcedureSelect, setPickedProcedureSelect] = useState('Extraction');
+  const [pickedProcedureCustom, setPickedProcedureCustom] = useState('');
+  const [pickedRequestedVia, setPickedRequestedVia] = useState('SMS');
+  const [pickedNote, setPickedNote] = useState('');
+  const [scheduleNowModal, setScheduleNowModal] = useState(null); // null | appointment
+  const [scheduleNowDate, setScheduleNowDate] = useState(todayKey);
+  const [scheduleNowWindow, setScheduleNowWindow] = useState('AM');
+  const [contactModal, setContactModal] = useState(null); // null | { child, appointment }
 
   const monthLabel = useMemo(() => {
     const d = new Date(viewYear, viewMonth, 1);
@@ -81,15 +110,43 @@ export default function Schedule({ token }) {
     setDailyQuotas(days);
   };
 
+  const reloadWaitingList = async () => {
+    const pending = await getAppointmentsByStatus('TO_BE_SCHEDULED');
+    const withChildren = await Promise.all(
+      pending.map(async (appointment) => ({ appointment, child: await getChild(appointment.childId) }))
+    );
+    withChildren.sort((a, b) => new Date(a.appointment.createdAt || 0) - new Date(b.appointment.createdAt || 0));
+    setWaitingList(withChildren);
+  };
+
   useEffect(() => {
-    reloadQuotas()
+    Promise.all([reloadQuotas(), reloadWaitingList()])
       .catch((e) => console.error(e))
       .finally(() => setLoading(false));
-    const onFocus = () => reloadQuotas().catch(() => {});
+    const onFocus = () => Promise.all([reloadQuotas(), reloadWaitingList()]).catch(() => {});
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
+
+  useEffect(() => {
+    const q = searchQ.trim();
+    if (!showAddWaitlist || q.length < 1) {
+      setSearchResults([]);
+      return;
+    }
+    let cancelled = false;
+    searchChildren(q)
+      .then((found) => {
+        if (!cancelled) setSearchResults(found.slice(0, 25));
+      })
+      .catch(() => {
+        if (!cancelled) setSearchResults([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [searchQ, showAddWaitlist]);
 
   /** Open month from Home reminder “Pick week on calendar” (YYYY-MM-DD). */
   useEffect(() => {
@@ -206,6 +263,133 @@ export default function Schedule({ token }) {
     }
   };
 
+  const resetAddWaitlistForm = () => {
+    setSearchQ('');
+    setSearchResults([]);
+    setPickedChildId('');
+    setPickedChild(null);
+    setPickedProcedureSelect('Extraction');
+    setPickedProcedureCustom('');
+    setPickedRequestedVia('SMS');
+    setPickedNote('');
+  };
+
+  const openAddWaitlistModal = () => {
+    resetAddWaitlistForm();
+    setShowAddWaitlist(true);
+  };
+
+  const addToWaitingList = async () => {
+    if (!pickedChildId) return;
+    setWaitlistSaving(true);
+    try {
+      const existing = await getAppointmentsByStatus('TO_BE_SCHEDULED');
+      const dup = existing.some((a) => a.childId === pickedChildId);
+      if (dup) {
+        notifyError('Patient is already on the waiting list.');
+        return;
+      }
+      const username = localStorage.getItem('username') || 'unknown';
+      const nowIso = new Date().toISOString();
+      const appointmentId = `appointment-${crypto.randomUUID()}`;
+      const payload = {
+        appointmentId,
+        childId: pickedChildId,
+        clinicDayId: 'UNASSIGNED',
+        timeWindow: 'FULL',
+        slotNumber: null,
+        reason: 'FOLLOW_UP',
+        status: 'TO_BE_SCHEDULED',
+        procedureType: resolveProcedureTypeForSave(pickedProcedureSelect, pickedProcedureCustom),
+        note: pickedNote.trim() || null,
+        metadata: {
+          waitlistRequestedVia: pickedRequestedVia
+        },
+        order: null,
+        createdBy: username,
+        createdAt: nowIso
+      };
+      await upsertAppointment(payload);
+      await addToOutbox('UPSERT_APPOINTMENT', appointmentId, payload);
+      if (navigator.onLine && token) {
+        try {
+          await syncPush(token);
+        } catch {}
+      }
+      await reloadWaitingList();
+      setShowAddWaitlist(false);
+      resetAddWaitlistForm();
+      notifySuccess('Added to waiting list.');
+    } catch (e) {
+      notifyError(e?.message || 'Failed to add to waiting list');
+    } finally {
+      setWaitlistSaving(false);
+    }
+  };
+
+  const openScheduleNow = (appointment) => {
+    setScheduleNowModal(appointment);
+    setScheduleNowDate(todayKey);
+    setScheduleNowWindow('AM');
+  };
+
+  const scheduleFromWaitingList = async () => {
+    if (!scheduleNowModal || !/^\d{4}-\d{2}-\d{2}$/.test(scheduleNowDate)) return;
+    setWaitlistSaving(true);
+    try {
+      const targetDayId = `clinicday-${scheduleNowDate}`;
+      const allDays = await getAllClinicDays();
+      const day = allDays
+        .filter((d) => toYmd(d.date) === scheduleNowDate)
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0];
+      if (!day) {
+        notifyError('Set quota for the selected day first.');
+        return;
+      }
+      const amTotal = Math.max(0, Number(day.amCapacity) || 0);
+      const pmTotal = Math.max(0, Number(day.pmCapacity) || 0);
+      const dayAppts = await getAppointmentsByClinicDay(targetDayId);
+      const active = dayAppts.filter(isActiveBookedSlot);
+      const amUsed = active.filter((a) => a.timeWindow === 'AM').length;
+      const pmUsed = active.filter((a) => a.timeWindow === 'PM').length;
+      const rem = scheduleNowWindow === 'AM' ? amTotal - amUsed : pmTotal - pmUsed;
+      if (rem <= 0) {
+        notifyError('Selected slot is full. Update quota or pick another day/window.');
+        return;
+      }
+      const dup = active.some((a) => a.childId === scheduleNowModal.childId && a.timeWindow === scheduleNowWindow);
+      if (dup) {
+        notifyError('Patient is already scheduled in that time window.');
+        return;
+      }
+      const order =
+        scheduleNowWindow === 'AM'
+          ? active.filter((a) => a.timeWindow === 'AM').length
+          : active.filter((a) => a.timeWindow === 'PM').length;
+      const updated = {
+        ...scheduleNowModal,
+        clinicDayId: targetDayId,
+        timeWindow: scheduleNowWindow,
+        status: 'SCHEDULED',
+        order
+      };
+      await upsertAppointment(updated);
+      await addToOutbox('UPSERT_APPOINTMENT', updated.appointmentId, updated);
+      if (navigator.onLine && token) {
+        try {
+          await syncPush(token);
+        } catch {}
+      }
+      await Promise.all([reloadWaitingList(), reloadQuotas()]);
+      setScheduleNowModal(null);
+      notifySuccess('Appointment scheduled.');
+    } catch (e) {
+      notifyError(e?.message || 'Failed to schedule appointment');
+    } finally {
+      setWaitlistSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="container">
@@ -299,6 +483,70 @@ export default function Schedule({ token }) {
         </div>
       </div>
 
+      <div className="card" style={{ marginBottom: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', gap: '8px' }}>
+          <div>
+            <div style={{ fontSize: '16px', fontWeight: 800 }}>Waiting list (To be scheduled)</div>
+            <div style={{ fontSize: '12px', color: 'var(--color-muted)' }}>{waitingList.length} patient(s)</div>
+          </div>
+          <button type="button" className="btn btn-secondary" onClick={openAddWaitlistModal}>
+            Add to waiting list
+          </button>
+        </div>
+        {waitingList.length === 0 ? (
+          <div style={{ color: 'var(--color-muted)' }}>No patients in waiting list.</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {waitingList.map(({ appointment, child }) => (
+              <div
+                key={appointment.appointmentId}
+                style={{
+                  border: '1px solid #e5e5ea',
+                  borderRadius: '12px',
+                  padding: '10px 12px',
+                  background: '#fafafa',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  gap: '10px'
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700 }}>{child?.fullName || 'Unknown patient'}</div>
+                  <div style={{ fontSize: '12px', color: 'var(--color-muted)', marginTop: '4px' }}>
+                    {appointment.procedureType || 'Extraction'}
+                    {appointment.note ? ` · ${appointment.note}` : ''}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--color-muted)', marginTop: '4px' }}>
+                    Requested via: {appointment?.metadata?.waitlistRequestedVia || '—'}
+                    {' · '}
+                    Added: {appointment.createdAt ? new Date(appointment.createdAt).toLocaleDateString() : '—'}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setContactModal({ child: child || null, appointment })}
+                    disabled={waitlistSaving}
+                  >
+                    Contact
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => openScheduleNow(appointment)}
+                    disabled={waitlistSaving}
+                  >
+                    Schedule now
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {showBatch && (
         <div style={{
           position: 'fixed',
@@ -373,6 +621,205 @@ export default function Schedule({ token }) {
             </button>
           </div>
         </div>
+      )}
+
+      {showAddWaitlist && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '16px'
+        }}>
+          <div className="card" style={{ maxWidth: '520px', width: '100%' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '12px' }}>Add to waiting list</h3>
+            <div className="form-group">
+              <label>Search by name or patient ID</label>
+              <input
+                value={searchQ}
+                onChange={(e) => {
+                  setSearchQ(e.target.value);
+                  setPickedChildId('');
+                  setPickedChild(null);
+                }}
+                placeholder="Name or ID…"
+                autoComplete="off"
+                inputMode="search"
+                autoFocus
+              />
+              {!pickedChild && searchQ.trim().length >= 1 && searchResults.length === 0 && (
+                <p style={{ margin: '8px 0 0', fontSize: '13px', color: 'var(--color-muted)' }}>No matches.</p>
+              )}
+              {!pickedChild && searchResults.length > 0 && (
+                <div
+                  role="listbox"
+                  aria-label="Search results"
+                  style={{
+                    marginTop: '10px',
+                    maxHeight: '240px',
+                    overflowY: 'auto',
+                    border: '1px solid #e5e5ea',
+                    borderRadius: 'var(--radius-card)',
+                    background: '#fafafa'
+                  }}
+                >
+                  {searchResults.map((c, idx) => {
+                    const isLast = idx === searchResults.length - 1;
+                    return (
+                      <button
+                        key={c.childId}
+                        type="button"
+                        role="option"
+                        aria-selected={false}
+                        onClick={() => {
+                          setPickedChildId(c.childId);
+                          setPickedChild(c);
+                        }}
+                        style={{
+                          width: '100%',
+                          textAlign: 'left',
+                          padding: '10px 12px',
+                          border: 'none',
+                          borderBottom: isLast ? 'none' : '1px solid #eee',
+                          background: 'transparent',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <div style={{ fontWeight: 600 }}>{c.fullName || 'Unknown patient'}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--color-muted)', marginTop: '4px' }}>
+                          {c.patientId || '—'}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {pickedChild && (
+              <div
+                style={{
+                  marginBottom: '12px',
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-card)',
+                  border: '1px solid #93c5fd',
+                  background: '#eff6ff'
+                }}
+              >
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#1d4ed8', marginBottom: '4px' }}>
+                  Selected
+                </div>
+                <div style={{ fontWeight: 700 }}>{pickedChild.fullName || 'Unknown patient'}</div>
+                <div style={{ fontSize: '12px', color: 'var(--color-muted)', marginTop: '4px' }}>
+                  {pickedChild.patientId || '—'}
+                </div>
+              </div>
+            )}
+
+            <AppointmentProcedureField
+              selectValue={pickedProcedureSelect}
+              customValue={pickedProcedureCustom}
+              onSelectChange={setPickedProcedureSelect}
+              onCustomChange={setPickedProcedureCustom}
+              disabled={waitlistSaving}
+            />
+
+            <div className="form-group" style={{ marginBottom: '10px' }}>
+              <label>Requested via</label>
+              <select
+                value={pickedRequestedVia}
+                onChange={(e) => setPickedRequestedVia(e.target.value)}
+                disabled={waitlistSaving}
+              >
+                <option value="SMS">SMS</option>
+                <option value="MESSENGER">Messenger</option>
+              </select>
+            </div>
+
+            <div className="form-group" style={{ marginTop: '10px' }}>
+              <label>Note</label>
+              <textarea value={pickedNote} onChange={(e) => setPickedNote(e.target.value)} rows={3} placeholder="Optional note..." />
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowAddWaitlist(false)} disabled={waitlistSaving}>
+                Cancel
+              </button>
+              <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={addToWaitingList} disabled={waitlistSaving || !pickedChildId}>
+                {waitlistSaving ? 'Saving…' : 'Add'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {scheduleNowModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '16px'
+        }}>
+          <div className="card" style={{ maxWidth: '520px', width: '100%' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '12px' }}>Schedule from waiting list</h3>
+            <div className="form-group" style={{ marginBottom: '10px' }}>
+              <label>Date</label>
+              <input type="date" value={scheduleNowDate} onChange={(e) => setScheduleNowDate(e.target.value)} />
+            </div>
+            <div className="form-group" style={{ marginBottom: '10px' }}>
+              <label>AM / PM</label>
+              <select value={scheduleNowWindow} onChange={(e) => setScheduleNowWindow(e.target.value)}>
+                <option value="AM">AM</option>
+                <option value="PM">PM</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ flex: 1 }}
+                onClick={() => setScheduleNowModal(null)}
+                disabled={waitlistSaving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+                onClick={scheduleFromWaitingList}
+                disabled={waitlistSaving}
+              >
+                {waitlistSaving ? 'Saving…' : 'Schedule'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {contactModal && (
+        <PatientContactModal
+          child={contactModal.child}
+          onClose={() => setContactModal(null)}
+          showMessageComposer={false}
+          getSmsBody={(c) => {
+            const name = formatChildDisplayName(c);
+            return `Hello, regarding ${name}: this is about scheduling an extraction appointment. Please reply with your available dates. Thank you.`;
+          }}
+        />
       )}
 
       <NavBar />
