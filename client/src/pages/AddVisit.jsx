@@ -49,20 +49,27 @@ const COMMON_MEDS = ['Amoxicillin', 'Ibuprofen', 'Paracetamol', 'Mefenamic', 'Co
 
 const newTreatmentBlock = () => ({
   id: crypto.randomUUID(),
-  toothNumber: null,
+  toothNumbers: [],
   treatments: []
 });
 
-/** Build UI blocks from saved per-tooth treatment map (one block per tooth with data). */
+/** Build UI blocks from saved per-tooth treatment map. Groups teeth with identical treatment sets into one block. */
 const blocksFromToothSpecific = (tsObj) => {
   const entries = Object.entries(tsObj || {}).filter(
     ([, arr]) => Array.isArray(arr) && arr.length > 0
   );
   if (entries.length === 0) return [newTreatmentBlock()];
-  return entries.map(([toothNumber, treatments]) => ({
+  // Group by identical treatment sets
+  const groups = new Map();
+  for (const [toothNumber, treatments] of entries) {
+    const key = [...treatments.map(String)].sort().join('|||');
+    if (!groups.has(key)) groups.set(key, { toothNumbers: [], treatments: [...treatments.map(String)] });
+    groups.get(key).toothNumbers.push(String(toothNumber));
+  }
+  return [...groups.values()].map((g) => ({
     id: crypto.randomUUID(),
-    toothNumber: String(toothNumber),
-    treatments: [...treatments.map(String)]
+    toothNumbers: g.toothNumbers,
+    treatments: g.treatments
   }));
 };
 
@@ -70,9 +77,12 @@ const blocksFromToothSpecific = (tsObj) => {
 const toothSpecificMapFromBlocks = (blocks) => {
   const out = {};
   for (const b of blocks) {
-    if (!b?.toothNumber || !Array.isArray(b.treatments) || b.treatments.length === 0) continue;
-    const t = String(b.toothNumber);
-    out[t] = [...new Set([...(out[t] || []), ...b.treatments.map(String)])];
+    if (!b?.toothNumbers || !Array.isArray(b.toothNumbers) || b.toothNumbers.length === 0) continue;
+    if (!Array.isArray(b.treatments) || b.treatments.length === 0) continue;
+    for (const t of b.toothNumbers) {
+      const key = String(t);
+      out[key] = [...new Set([...(out[key] || []), ...b.treatments.map(String)])];
+    }
   }
   return out;
 };
@@ -423,7 +433,15 @@ export default function AddVisit({ token }) {
   const setBlockTreatmentTooth = (blockId, tooth) => {
     const persistedId = getPersistedToothCondition(child?.toothStates, tooth);
     setTreatmentBlocks((prev) =>
-      prev.map((b) => (b.id === blockId ? { ...b, toothNumber: tooth } : b))
+      prev.map((b) => {
+        if (b.id !== blockId) return b;
+        const current = b.toothNumbers || [];
+        const isSelected = current.includes(tooth);
+        return {
+          ...b,
+          toothNumbers: isSelected ? current.filter((t) => t !== tooth) : [...current, tooth]
+        };
+      })
     );
     setToothRecords((prev) => {
       if (prev[tooth]) return prev;
@@ -434,9 +452,6 @@ export default function AddVisit({ token }) {
     });
   };
 
-  const addAnotherTreatmentToothRow = () => {
-    setTreatmentBlocks((prev) => [...prev, newTreatmentBlock()]);
-  };
 
   const removeTreatmentBlock = (blockId) => {
     setTreatmentBlocks((prev) => {
@@ -537,7 +552,7 @@ export default function AddVisit({ token }) {
     const examRec = toothRecords[tooth];
     const condId = examRec?.condition ?? persistedId;
     const condMeta = CONDITIONS.find((c) => c.id === condId) || CONDITIONS[0];
-    const isSel = block.toothNumber === tooth;
+    const isSel = (block.toothNumbers || []).includes(tooth);
     const showStatusLabel = condMeta.id !== 'sound';
     const bg = condMeta.color;
     const fg = isDarkHex(condMeta.color) ? '#fff' : '#111827';
@@ -1007,8 +1022,7 @@ export default function AddVisit({ token }) {
         <div>
           <div style={{ fontWeight: 700, marginBottom: 8 }}>Tooth-specific treatment</div>
           <p style={{ fontSize: '13px', color: 'var(--color-muted)', marginTop: 0 }}>
-            Each block has its own tooth map. Pick a tooth, then add treatments. Use &quot;Add another tooth&quot; for
-            more teeth.
+            Each block has its own tooth map. Pick a tooth, then add treatments.
           </p>
 
           {treatmentBlocks.map((block, blockIdx) => (
@@ -1023,7 +1037,7 @@ export default function AddVisit({ token }) {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                 <span style={{ fontWeight: 700, color: '#374151' }}>
                   Tooth-specific {blockIdx + 1}
-                  {block.toothNumber ? ` · ${block.toothNumber}` : ''}
+                  {block.toothNumbers?.length ? ` · ${block.toothNumbers.join(', ')}` : ''}
                 </span>
                 {treatmentBlocks.length > 1 && (
                   <button
@@ -1048,7 +1062,7 @@ export default function AddVisit({ token }) {
                   ))}
                 </div>
               </div>
-              {block.toothNumber ? (
+              {block.toothNumbers?.length ? (
                 <EditableChipList
                   storageKey="toothaid_presets_tooth_treatment"
                   defaultList={COMMON_TREATMENTS}
@@ -1063,15 +1077,6 @@ export default function AddVisit({ token }) {
               )}
             </div>
           ))}
-
-          <button
-            type="button"
-            className="btn btn-sm"
-            style={{ ...btnAddGreen, width: '100%', marginTop: 14 }}
-            onClick={addAnotherTreatmentToothRow}
-          >
-            Add another tooth
-          </button>
         </div>
       </div>
 

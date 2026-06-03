@@ -648,7 +648,7 @@ const Home = ({ setToken }) => {
 
           <button
             type="button"
-            className="btn btn-primary"
+            className="btn btn-danger"
             disabled={!isOnline || syncing}
             onClick={async () => {
               const token = localStorage.getItem('token');
