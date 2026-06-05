@@ -25,6 +25,7 @@ import {
   isDarkHex,
   getPersistedToothCondition
 } from '../utils/toothChart';
+import { getPriorityTreatment, getTreatmentColor } from '../utils/treatmentTypes';
 
 const PRESET_SYMPTOMS = ['Pain', 'Swelling', 'Bleeding', 'Sensitivity'];
 
@@ -44,47 +45,34 @@ const normalizeSymptomDaysForSave = (v) => {
 };
 
 const GENERAL_TREATMENTS = ['Cleaning', 'Fluoride'];
-const COMMON_TREATMENTS = ['Cleaning', 'Fluoride', 'Sealant', 'Filling', 'Extraction'];
+const COMMON_TREATMENTS = ['Fluoride', 'Sealant', 'Filling', 'Extraction'];
 const COMMON_MEDS = ['Amoxicillin', 'Ibuprofen', 'Paracetamol', 'Mefenamic', 'Co-amox'];
 
-const newTreatmentBlock = () => ({
-  id: crypto.randomUUID(),
-  toothNumbers: [],
-  treatments: []
-});
-
-/** Build UI blocks from saved per-tooth treatment map. Groups teeth with identical treatment sets into one block. */
-const blocksFromToothSpecific = (tsObj) => {
-  const entries = Object.entries(tsObj || {}).filter(
-    ([, arr]) => Array.isArray(arr) && arr.length > 0
-  );
-  if (entries.length === 0) return [newTreatmentBlock()];
-  // Group by identical treatment sets
-  const groups = new Map();
-  for (const [toothNumber, treatments] of entries) {
-    const key = [...treatments.map(String)].sort().join('|||');
-    if (!groups.has(key)) groups.set(key, { toothNumbers: [], treatments: [...treatments.map(String)] });
-    groups.get(key).toothNumbers.push(String(toothNumber));
-  }
-  return [...groups.values()].map((g) => ({
-    id: crypto.randomUUID(),
-    toothNumbers: g.toothNumbers,
-    treatments: g.treatments
-  }));
+/** Toggle a treatment label on/off for a specific tooth. */
+const toggleToothTreatment = (tooth, label, setToothTreatments) => {
+  setToothTreatments((prev) => {
+    const current = prev[tooth] || [];
+    const idx = current.indexOf(label);
+    if (idx >= 0) {
+      const next = current.filter((x) => x !== label);
+      if (next.length === 0) {
+        const copy = { ...prev };
+        delete copy[tooth];
+        return copy;
+      }
+      return { ...prev, [tooth]: next };
+    }
+    return { ...prev, [tooth]: [...current, label] };
+  });
 };
 
-/** Merge all blocks into one map for save (same tooth in multiple blocks → union). */
-const toothSpecificMapFromBlocks = (blocks) => {
-  const out = {};
-  for (const b of blocks) {
-    if (!b?.toothNumbers || !Array.isArray(b.toothNumbers) || b.toothNumbers.length === 0) continue;
-    if (!Array.isArray(b.treatments) || b.treatments.length === 0) continue;
-    for (const t of b.toothNumbers) {
-      const key = String(t);
-      out[key] = [...new Set([...(out[key] || []), ...b.treatments.map(String)])];
-    }
-  }
-  return out;
+/** Remove all treatments for a tooth. */
+const removeToothTreatments = (tooth, setToothTreatments) => {
+  setToothTreatments((prev) => {
+    const copy = { ...prev };
+    delete copy[tooth];
+    return copy;
+  });
 };
 
 const btnAddGreen = {
@@ -277,7 +265,8 @@ export default function AddVisit({ token }) {
   const [selectedExamTooth, setSelectedExamTooth] = useState(null);
 
   const [generalTreatments, setGeneralTreatments] = useState([]);
-  const [treatmentBlocks, setTreatmentBlocks] = useState(() => [newTreatmentBlock()]);
+  const [toothTreatments, setToothTreatments] = useState({});
+  const [selectedTreatTooth, setSelectedTreatTooth] = useState(null);
 
   const [medications, setMedications] = useState([]);
   const [medDraft, setMedDraft] = useState({
@@ -313,7 +302,7 @@ export default function AddVisit({ token }) {
         setExaminationNotes('');
         setSelectedExamTooth(null);
         setGeneralTreatments([]);
-        setTreatmentBlocks([newTreatmentBlock()]);
+        setToothTreatments({});
         setMedications([]);
         setMedDraft({ name: '', dosage: '', frequencyPerDay: '', days: '' });
         setBehaviourFrankl('');
@@ -340,7 +329,7 @@ export default function AddVisit({ token }) {
       setToothRecords(hydrated.toothRecords);
       setExaminationNotes(hydrated.examinationNotes);
       setGeneralTreatments(hydrated.generalTreatments);
-      setTreatmentBlocks(blocksFromToothSpecific(hydrated.toothSpecificByTooth));
+      setToothTreatments(hydrated.toothSpecificByTooth || {});
       setSelectedExamTooth(null);
       setMedications(normalizeMedicationsForForm(v.medications));
       setMedDraft({ name: '', dosage: '', frequencyPerDay: '', days: '' });
@@ -374,7 +363,8 @@ export default function AddVisit({ token }) {
     if (!ok) return;
     setDentition(next);
     setToothRecords({});
-    setTreatmentBlocks([newTreatmentBlock()]);
+    setToothTreatments({});
+    setSelectedTreatTooth(null);
     setSelectedExamTooth(null);
   };
 
@@ -417,46 +407,15 @@ export default function AddVisit({ token }) {
     });
   };
 
-  const toggleBlockTreatment = (blockId, label) => {
-    setTreatmentBlocks((prev) =>
-      prev.map((b) => {
-        if (b.id !== blockId) return b;
-        const cur = [...(b.treatments || [])];
-        const i = cur.indexOf(label);
-        if (i >= 0) cur.splice(i, 1);
-        else cur.push(label);
-        return { ...b, treatments: cur };
-      })
-    );
-  };
-
-  const setBlockTreatmentTooth = (blockId, tooth) => {
+  const handleTreatToothClick = (tooth) => {
     const persistedId = getPersistedToothCondition(child?.toothStates, tooth);
-    setTreatmentBlocks((prev) =>
-      prev.map((b) => {
-        if (b.id !== blockId) return b;
-        const current = b.toothNumbers || [];
-        const isSelected = current.includes(tooth);
-        return {
-          ...b,
-          toothNumbers: isSelected ? current.filter((t) => t !== tooth) : [...current, tooth]
-        };
-      })
-    );
+    setSelectedTreatTooth(tooth);
     setToothRecords((prev) => {
       if (prev[tooth]) return prev;
       return {
         ...prev,
         [tooth]: { condition: persistedId || 'sound', note: '' }
       };
-    });
-  };
-
-
-  const removeTreatmentBlock = (blockId) => {
-    setTreatmentBlocks((prev) => {
-      if (prev.length <= 1) return [newTreatmentBlock()];
-      return prev.filter((b) => b.id !== blockId);
     });
   };
 
@@ -547,20 +506,37 @@ export default function AddVisit({ token }) {
     );
   };
 
-  const renderTreatToothButton = (block, tooth) => {
+  const renderTreatToothButton = (tooth) => {
     const persistedId = getPersistedToothCondition(child?.toothStates, tooth);
     const examRec = toothRecords[tooth];
     const condId = examRec?.condition ?? persistedId;
     const condMeta = CONDITIONS.find((c) => c.id === condId) || CONDITIONS[0];
-    const isSel = (block.toothNumbers || []).includes(tooth);
-    const showStatusLabel = condMeta.id !== 'sound';
-    const bg = condMeta.color;
-    const fg = isDarkHex(condMeta.color) ? '#fff' : '#111827';
+    const isSel = selectedTreatTooth === tooth;
+
+    // Cleaning/Fluoride in general treatments = whole-mouth: highlight all teeth
+    const generalHasWholeMouth = generalTreatments.includes('Cleaning') || generalTreatments.includes('Fluoride');
+
+    // Use treatment color when tooth has treatments assigned
+    const toothHasTreatments = toothTreatments[tooth] && toothTreatments[tooth].length > 0;
+
+    let priorityTreatment = null;
+    if (generalHasWholeMouth) {
+      priorityTreatment = generalTreatments.includes('Cleaning') ? 'Cleaning' : 'Fluoride';
+    } else if (toothHasTreatments) {
+      priorityTreatment = getPriorityTreatment(toothTreatments[tooth]);
+    }
+
+    const treatColor = priorityTreatment ? getTreatmentColor(priorityTreatment) : null;
+
+    const bg = treatColor || condMeta.color;
+    const fg = isDarkHex(bg) ? '#fff' : '#111827';
+    const label = treatColor ? priorityTreatment : (condMeta.id !== 'sound' ? condMeta.label : ' ');
+    const tooltip = treatColor ? `${tooth} · ${priorityTreatment}` : (condMeta.id !== 'sound' ? `${tooth} · ${condMeta.label}` : `${tooth}`);
     return (
       <button
-        key={`${block.id}-${tooth}`}
+        key={`treat-${tooth}`}
         type="button"
-        onClick={() => setBlockTreatmentTooth(block.id, tooth)}
+        onClick={() => handleTreatToothClick(tooth)}
         style={{
           padding: '8px 4px 6px',
           borderRadius: '10px',
@@ -578,7 +554,7 @@ export default function AddVisit({ token }) {
           minHeight: '52px',
           lineHeight: 1.1
         }}
-        title={showStatusLabel ? `${tooth} · ${condMeta.label}` : `${tooth}`}
+        title={tooltip}
       >
         <span style={{ fontSize: '0.95rem' }}>{tooth}</span>
         <span
@@ -593,11 +569,12 @@ export default function AddVisit({ token }) {
             whiteSpace: 'nowrap'
           }}
         >
-          {showStatusLabel ? condMeta.label : '\u00A0'}
+          {label}
         </span>
       </button>
     );
   };
+
 
   const submit = async () => {
     setError('');
@@ -606,7 +583,7 @@ export default function AddVisit({ token }) {
       const now = new Date().toISOString();
       const username = localStorage.getItem('username') || 'unknown';
 
-      const toothSpecificByTooth = toothSpecificMapFromBlocks(treatmentBlocks);
+      const toothSpecificByTooth = toothTreatments;
       const toothSpecificTreatments = Object.entries(toothSpecificByTooth)
         .filter(([, arr]) => Array.isArray(arr) && arr.length > 0)
         .map(([toothNumber, treatments]) => ({ toothNumber, treatments: [...treatments] }));
@@ -1022,63 +999,114 @@ export default function AddVisit({ token }) {
         <div>
           <div style={{ fontWeight: 700, marginBottom: 8 }}>Tooth-specific treatment</div>
           <p style={{ fontSize: '13px', color: 'var(--color-muted)', marginTop: 0 }}>
-            Each block has its own tooth map. Pick a tooth, then add treatments.
+            Tap a tooth on the map, then assign treatments from the list below. Each tooth can have a different operation.
           </p>
-
-          {treatmentBlocks.map((block, blockIdx) => (
-            <div
-              key={block.id}
-              style={{
-                marginTop: blockIdx === 0 ? 0 : 18,
-                paddingTop: blockIdx === 0 ? 0 : 16,
-                borderTop: blockIdx === 0 ? 'none' : '1px solid #e5e7eb'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontWeight: 700, color: '#374151' }}>
-                  Tooth-specific {blockIdx + 1}
-                  {block.toothNumbers?.length ? ` · ${block.toothNumbers.join(', ')}` : ''}
-                </span>
-                {treatmentBlocks.length > 1 && (
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => removeTreatmentBlock(block.id)}
-                  >
-                    Remove row
-                  </button>
-                )}
-              </div>
-              <div className="form-group">
-                <label>Tooth map</label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px', overflowX: 'auto', paddingBottom: 2 }}>
-                  {toothGrid.map((row, idx) => (
-                    <div
-                      key={`${block.id}-row-${idx}`}
-                      style={{ display: 'grid', gridTemplateColumns: `repeat(${row.length}, minmax(44px, 1fr))`, gap: '6px' }}
-                    >
-                      {row.map((tooth) => renderTreatToothButton(block, tooth))}
-                    </div>
-                  ))}
+          <div className="form-group">
+            <label>Tooth map</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px', overflowX: 'auto', paddingBottom: 2 }}>
+              {toothGrid.map((row, idx) => (
+                <div
+                  key={`treat-row-${idx}`}
+                  style={{ display: 'grid', gridTemplateColumns: `repeat(${row.length}, minmax(44px, 1fr))`, gap: '6px' }}
+                >
+                  {row.map((tooth) => renderTreatToothButton(tooth))}
                 </div>
-              </div>
-              {block.toothNumbers?.length ? (
-                <EditableChipList
-                  storageKey="toothaid_presets_tooth_treatment"
-                  defaultList={COMMON_TREATMENTS}
-                  mode="toggle"
-                  activeMap={Object.fromEntries((block.treatments || []).map((x) => [x, true]))}
-                  onToggle={(label) => toggleBlockTreatment(block.id, label)}
-                />
-              ) : (
-                <p style={{ fontSize: '12px', color: 'var(--color-muted)', margin: '8px 0 0' }}>
-                  Select a tooth on the map above to enable treatments for this row.
-                </p>
-              )}
+              ))}
             </div>
-          ))}
+          </div>
+
+          {selectedTreatTooth && (
+            <>
+              <div style={{ fontSize: '13px', fontWeight: 650, marginBottom: 8, color: '#374151', marginTop: 12 }}>
+                Selected: tooth {selectedTreatTooth}
+                {toothTreatments[selectedTreatTooth]?.length ? ` · ${toothTreatments[selectedTreatTooth].join(', ')}` : ''}
+              </div>
+              <EditableChipList
+                storageKey="toothaid_presets_tooth_treatment"
+                defaultList={COMMON_TREATMENTS}
+                mode="toggle"
+                activeMap={Object.fromEntries((toothTreatments[selectedTreatTooth] || []).map((x) => [x, true]))}
+                onToggle={(label) => toggleToothTreatment(selectedTreatTooth, label, setToothTreatments)}
+              />
+              {toothTreatments[selectedTreatTooth]?.length > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => removeToothTreatments(selectedTreatTooth, setToothTreatments)}
+                  style={{ marginTop: 10 }}
+                >
+                  Clear treatments for tooth {selectedTreatTooth}
+                </button>
+              )}
+            </>
+          )}
+
+          {Object.keys(toothTreatments).length > 0 && (
+            <div style={{ marginTop: 16, borderTop: '1px solid #e5e7eb', paddingTop: 12 }}>
+              <div style={{ fontWeight: 700, marginBottom: 8, fontSize: '13px', color: '#374151' }}>Assigned teeth</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {Object.entries(toothTreatments).map(([tooth, treatments]) => {
+                  const priority = getPriorityTreatment(treatments);
+                  const color = priority ? getTreatmentColor(priority) : '#6B7280';
+                  const fg = isDarkHex(color) ? '#fff' : '#111827';
+                  return (
+                    <div
+                      key={tooth}
+                      style={{
+                        padding: '6px 6px 6px 12px',
+                        borderRadius: '20px',
+                        background: color,
+                        color: fg,
+                        fontWeight: 700,
+                        fontSize: '13px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        border: selectedTreatTooth === tooth ? '2px solid #111827' : '2px solid transparent',
+                      }}
+                      title={treatments.join(', ')}
+                    >
+                      <span onClick={() => handleTreatToothClick(tooth)} style={{ cursor: 'pointer' }}>
+                        {tooth}: {priority || treatments[0]}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeToothTreatments(tooth, setToothTreatments);
+                          if (selectedTreatTooth === tooth) setSelectedTreatTooth(null);
+                        }}
+                        style={{
+                          width: '20px',
+                          height: '20px',
+                          borderRadius: '50%',
+                          border: 'none',
+                          background: 'rgba(0,0,0,0.25)',
+                          color: '#fff',
+                          fontSize: '11px',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          lineHeight: 1,
+                          flexShrink: 0,
+                        }}
+                        title={`Remove treatments for tooth ${tooth}`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      
 
       <div className="card" style={{ marginBottom: '12px' }}>
         <h3 style={{ marginTop: 0, marginBottom: '10px' }}>Medication</h3>

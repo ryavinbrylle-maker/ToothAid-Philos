@@ -29,7 +29,7 @@ import { API_BASE_URL } from '../config';
 import { PARENT_FORM_FIELD_DEFS, PARENT_FORM_FIELD_GROUPS } from '../constants/parentFormFields';
 import EditableChipList from '../components/EditableChipList';
 import { getFollowUpTimingLabel, visitRequiresFollowUp } from '../utils/followUpTiming';
-import { TREATMENT_OPTIONS } from '../utils/treatmentTypes';
+import { TREATMENT_OPTIONS, getPriorityTreatment, getTreatmentColor } from '../utils/treatmentTypes';
 
 const MEDICAL_ALLERGY_PRESETS = ['None known', 'Penicillin', 'Shellfish', 'Latex'];
 const MEDICAL_HISTORY_PRESETS = ['G6PD', 'Hospitalization', 'CHD', 'Asthma'];
@@ -175,89 +175,66 @@ const VisitHistoryEntryDetail = ({ visit }) => {
         </p>
       )}
       {teethRows.length > 0 ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {teethRows.map((row) => {
-            const condMeta = CONDITIONS.find((c) => c.id === row.conditionId) || CONDITIONS[0];
-            const showStatusLabel = condMeta.id !== 'sound';
-            const fg = isDarkHex(condMeta.color) ? '#fff' : '#111827';
-            return (
-              <div
-                key={row.tooth}
-                style={{
-                  display: 'flex',
-                  gap: '12px',
-                  alignItems: 'flex-start',
-                  padding: '10px 12px',
-                  background: '#f9fafb',
-                  borderRadius: '12px',
-                  border: '1px solid #e5e5ea'
-                }}
-              >
-                <div
-                  title={showStatusLabel ? `${row.tooth} · ${condMeta.label}` : row.tooth}
-                  style={{
-                    flexShrink: 0,
-                    width: '52px',
-                    padding: '8px 4px 6px',
-                    borderRadius: '10px',
-                    border: '1px solid #e5e5ea',
-                    boxSizing: 'border-box',
-                    background: condMeta.color,
-                    color: fg,
-                    fontWeight: 800,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '2px',
-                    minHeight: '52px',
-                    lineHeight: 1.1,
-                    textAlign: 'center'
-                  }}
-                >
-                  <span style={{ fontSize: '0.95rem' }}>{row.tooth}</span>
-                  <span
-                    style={{
-                      fontSize: '0.62rem',
-                      fontWeight: 650,
-                      opacity: 0.92,
-                      maxWidth: '100%',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    {showStatusLabel ? condMeta.label : '\u00A0'}
-                  </span>
+        (() => {
+          const treatedTeeth = teethRows.filter((row) => row.treatments.length > 0);
+          if (treatedTeeth.length === 0 && legacyTreatments.length === 0) return null;
+          return (
+            <div style={{ marginTop: '2px' }}>
+              {treatedTeeth.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                  {treatedTeeth.map((row) => {
+                    const priority = getPriorityTreatment(row.treatments);
+                    const color = priority ? getTreatmentColor(priority) : '#6B7280';
+                    const fg = isDarkHex(color) ? '#fff' : '#111827';
+                    return (
+                      <div
+                        key={row.tooth}
+                        title={`${row.tooth}: ${row.treatments.join(', ')}${row.note ? ' · Note: ' + row.note : ''}`}
+                        style={{
+                          padding: '8px 6px 5px',
+                          borderRadius: '10px',
+                          border: '1px solid rgba(0,0,0,0.12)',
+                          background: color,
+                          color: fg,
+                          fontWeight: 800,
+                          fontSize: '13px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: '2px',
+                          minWidth: '48px',
+                          lineHeight: 1.1,
+                          cursor: 'default',
+                        }}
+                      >
+                        <span style={{ fontSize: '0.9rem' }}>{row.tooth}</span>
+                        <span style={{ fontSize: '0.58rem', fontWeight: 650, opacity: 0.9 }}>
+                          {priority || row.treatments[0]}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div style={{ flex: 1, minWidth: 0, fontSize: '14px', lineHeight: 1.45 }}>
-                  {row.treatments.length > 0 && (
-                    <div style={{ marginBottom: row.note ? '6px' : 0 }}>
-                      <span style={{ fontWeight: 700, color: '#374151' }}>Treatment: </span>
-                      <span>{row.treatments.join(', ')}</span>
-                    </div>
-                  )}
-                  {row.note && (
-                    <div>
-                      <span style={{ fontWeight: 700, color: '#374151' }}>Notes: </span>
-                      <span style={{ color: '#4b5563' }}>{row.note}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              )}
+              {legacyTreatments.length > 0 && (
+                <p style={{ marginTop: treatedTeeth.length > 0 ? '8px' : '2px', fontSize: '13px', color: '#4b5563' }}>
+                  <strong>Treatments: </strong>
+                  {legacyTreatments.join(', ')}
+                </p>
+              )}
+            </div>
+          );
+        })()
       ) : (
         <>
           {legacyTreatments.length > 0 && (
-            <p style={{ marginTop: '8px', fontSize: '14px' }}>
+            <p style={{ marginTop: '2px', fontSize: '13px', color: '#4b5563' }}>
               <strong>Treatments: </strong>
               {legacyTreatments.join(', ')}
             </p>
           )}
         </>
-      )}
+      )}      )}
 
       {medications.length > 0 && (
         <div style={{ marginTop: chiefText || hasTeethOrLegacy ? '14px' : 0 }}>

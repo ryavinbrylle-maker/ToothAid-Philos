@@ -125,6 +125,46 @@ export function parseTreatmentTypesForForm(treatmentTypes = []) {
   };
 }
 
+/** Colors assigned to each treatment for tooth map highlighting. */
+export const TREATMENT_COLORS = {
+  'Cleaning': '#06B6D4',       // cyan
+  'Fluoride': '#8B5CF6',       // purple
+  'Sealant': '#059669',        // emerald green
+  'Filling': '#2563EB',        // royal blue
+  'Extraction': '#DC2626',     // red
+};
+
+/** Priority order for resolving color when multiple treatments are selected (most invasive first). */
+const TREATMENT_PRIORITY = ['Extraction', 'Filling', 'Sealant', 'Fluoride', 'Cleaning'];
+
+/**
+ * Return the highest-priority treatment label from a list.
+ * Falls back to the first treatment if none match the priority list.
+ */
+export function getPriorityTreatment(treatments) {
+  if (!Array.isArray(treatments) || treatments.length === 0) return null;
+  for (const priority of TREATMENT_PRIORITY) {
+    if (treatments.includes(priority)) return priority;
+  }
+  return treatments[0];
+}
+
+/**
+ * Get the display color for a treatment label.
+ * Falls back to a deterministic generated color for custom/unknown treatments.
+ */
+export function getTreatmentColor(treatment) {
+  if (!treatment) return TREATMENT_COLORS['Cleaning'];
+  if (TREATMENT_COLORS[treatment]) return TREATMENT_COLORS[treatment];
+  // Generate a deterministic hue from the treatment name for custom treatments
+  let hash = 0;
+  for (let i = 0; i < treatment.length; i++) {
+    hash = treatment.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const h = Math.abs(hash) % 360;
+  return `hsl(${h}, 50%, 42%)`;
+}
+
 /** Big-title labels only (for charts). Same order as TREATMENT_OPTIONS. */
 export const TREATMENT_CHART_LABELS = TREATMENT_OPTIONS.map(o => o.label);
 
