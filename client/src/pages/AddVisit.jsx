@@ -407,7 +407,14 @@ export default function AddVisit({ token }) {
     });
   };
 
+  const isToothMissing = (tooth) => {
+    const persistedId = getPersistedToothCondition(child?.toothStates, tooth);
+    const condId = toothRecords[tooth]?.condition ?? persistedId;
+    return condId === 'missing';
+  };
+
   const handleTreatToothClick = (tooth) => {
+    if (isToothMissing(tooth)) return;
     const persistedId = getPersistedToothCondition(child?.toothStates, tooth);
     setSelectedTreatTooth(tooth);
     setToothRecords((prev) => {
@@ -416,6 +423,24 @@ export default function AddVisit({ token }) {
         ...prev,
         [tooth]: { condition: persistedId || 'sound', note: '' }
       };
+    });
+  };
+
+  const markTreatToothMissing = (tooth) => {
+    setToothRecords((prev) => ({
+      ...prev,
+      [tooth]: { ...(prev[tooth] || { note: '' }), condition: 'missing' }
+    }));
+    removeToothTreatments(tooth, setToothTreatments);
+    setSelectedTreatTooth(null);
+  };
+
+  const restoreMissingTooth = (tooth) => {
+    setToothRecords((prev) => {
+      const copy = { ...prev };
+      const note = copy[tooth]?.note || '';
+      copy[tooth] = { condition: 'sound', note };
+      return copy;
     });
   };
 
@@ -512,6 +537,7 @@ export default function AddVisit({ token }) {
     const condId = examRec?.condition ?? persistedId;
     const condMeta = CONDITIONS.find((c) => c.id === condId) || CONDITIONS[0];
     const isSel = selectedTreatTooth === tooth;
+    const isMissing = condId === 'missing';
 
     // Cleaning/Fluoride in general treatments = whole-mouth: highlight all teeth
     const generalHasWholeMouth = generalTreatments.includes('Cleaning') || generalTreatments.includes('Fluoride');
@@ -520,9 +546,9 @@ export default function AddVisit({ token }) {
     const toothHasTreatments = toothTreatments[tooth] && toothTreatments[tooth].length > 0;
 
     let priorityTreatment = null;
-    if (generalHasWholeMouth) {
+    if (!isMissing && generalHasWholeMouth) {
       priorityTreatment = generalTreatments.includes('Cleaning') ? 'Cleaning' : 'Fluoride';
-    } else if (toothHasTreatments) {
+    } else if (!isMissing && toothHasTreatments) {
       priorityTreatment = getPriorityTreatment(toothTreatments[tooth]);
     }
 
@@ -530,13 +556,13 @@ export default function AddVisit({ token }) {
 
     const bg = treatColor || condMeta.color;
     const fg = isDarkHex(bg) ? '#fff' : '#111827';
-    const label = treatColor ? priorityTreatment : (condMeta.id !== 'sound' ? condMeta.label : ' ');
+    const label = isMissing ? 'Missing' : treatColor ? priorityTreatment : (condMeta.id !== 'sound' ? condMeta.label : ' ');
     const tooltip = treatColor ? `${tooth} · ${priorityTreatment}` : (condMeta.id !== 'sound' ? `${tooth} · ${condMeta.label}` : `${tooth}`);
     return (
       <button
         key={`treat-${tooth}`}
         type="button"
-        onClick={() => handleTreatToothClick(tooth)}
+        onClick={() => (isMissing ? restoreMissingTooth(tooth) : handleTreatToothClick(tooth))}
         style={{
           padding: '8px 4px 6px',
           borderRadius: '10px',
@@ -546,6 +572,8 @@ export default function AddVisit({ token }) {
           color: fg,
           fontWeight: 800,
           cursor: 'pointer',
+          opacity: isMissing ? 0.55 : 1,
+          textDecoration: isMissing ? 'line-through' : 'none',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -1028,16 +1056,25 @@ export default function AddVisit({ token }) {
                 activeMap={Object.fromEntries((toothTreatments[selectedTreatTooth] || []).map((x) => [x, true]))}
                 onToggle={(label) => toggleToothTreatment(selectedTreatTooth, label, setToothTreatments)}
               />
-              {toothTreatments[selectedTreatTooth]?.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                {toothTreatments[selectedTreatTooth]?.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => removeToothTreatments(selectedTreatTooth, setToothTreatments)}
+                  >
+                    Clear treatments for tooth {selectedTreatTooth}
+                  </button>
+                )}
                 <button
                   type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => removeToothTreatments(selectedTreatTooth, setToothTreatments)}
-                  style={{ marginTop: 10 }}
+                  className="btn btn-sm"
+                  onClick={() => markTreatToothMissing(selectedTreatTooth)}
+                  style={{ background: '#6B7280', color: '#fff', border: '1px solid #4B5563', fontWeight: 700 }}
                 >
-                  Clear treatments for tooth {selectedTreatTooth}
+                  Mark tooth {selectedTreatTooth} as missing
                 </button>
-              )}
+              </div>
             </>
           )}
 

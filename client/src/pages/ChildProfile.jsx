@@ -146,6 +146,7 @@ const normalizeMedicationsFromVisit = (visit) => {
 /** Single visit card body: per-tooth tiles (same palette as tooth map) + meds + notes */
 const VisitHistoryEntryDetail = ({ visit }) => {
   const teethRows = buildVisitTeethRows(visit);
+  const missingTeeth = teethRows.filter((row) => row.conditionId === 'missing');
   const medications = normalizeMedicationsFromVisit(visit);
 
   const legacyTreatments =
@@ -154,6 +155,39 @@ const VisitHistoryEntryDetail = ({ visit }) => {
       : Array.isArray(visit.treatments)
         ? visit.treatments.filter((t) => t != null && String(t).trim() !== '')
         : [];
+
+  const TOOTH_PREFIX_RE = /^Tooth\s+[^:]+:/i;
+  const generalTreatments = legacyTreatments.filter((t) => !TOOTH_PREFIX_RE.test(String(t)));
+  const toothPrefixedLegacy = legacyTreatments.filter((t) => TOOTH_PREFIX_RE.test(String(t)));
+
+  const GeneralTreatmentBoxes = () =>
+    generalTreatments.length > 0 ? (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
+        {generalTreatments.map((label) => {
+          const color = getTreatmentColor(label);
+          const fg = isDarkHex(color) ? '#fff' : '#111827';
+          return (
+            <div
+              key={label}
+              title={label}
+              style={{
+                padding: '8px 12px',
+                borderRadius: '10px',
+                border: '1px solid rgba(0,0,0,0.12)',
+                background: color,
+                color: fg,
+                fontWeight: 800,
+                fontSize: '13px',
+                lineHeight: 1.1,
+                cursor: 'default'
+              }}
+            >
+              {label}
+            </div>
+          );
+        })}
+      </div>
+    ) : null;
 
   const chiefText =
     visit.chiefComplaint != null && String(visit.chiefComplaint).trim() !== ''
@@ -216,10 +250,11 @@ const VisitHistoryEntryDetail = ({ visit }) => {
                   })}
                 </div>
               )}
-              {legacyTreatments.length > 0 && (
-                <p style={{ marginTop: treatedTeeth.length > 0 ? '8px' : '2px', fontSize: '13px', color: '#4b5563' }}>
+              <GeneralTreatmentBoxes />
+              {toothPrefixedLegacy.length > 0 && (
+                <p style={{ marginTop: '8px', fontSize: '13px', color: '#4b5563' }}>
                   <strong>Treatments: </strong>
-                  {legacyTreatments.join(', ')}
+                  {toothPrefixedLegacy.join(', ')}
                 </p>
               )}
             </div>
@@ -227,14 +262,50 @@ const VisitHistoryEntryDetail = ({ visit }) => {
         })()
       ) : (
         <>
-          {legacyTreatments.length > 0 && (
-            <p style={{ marginTop: '2px', fontSize: '13px', color: '#4b5563' }}>
+          <GeneralTreatmentBoxes />
+          {toothPrefixedLegacy.length > 0 && (
+            <p style={{ marginTop: '8px', fontSize: '13px', color: '#4b5563' }}>
               <strong>Treatments: </strong>
-              {legacyTreatments.join(', ')}
+              {toothPrefixedLegacy.join(', ')}
             </p>
           )}
         </>
       )}      )}
+
+      {missingTeeth.length > 0 && (
+        <div style={{ marginTop: chiefText || hasTeethOrLegacy ? '14px' : '8px' }}>
+          <div style={{ fontWeight: 750, fontSize: '14px', color: '#374151', marginBottom: '6px' }}>
+            Missing teeth ({missingTeeth.length})
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+            {missingTeeth.map((row) => (
+              <div
+                key={row.tooth}
+                title={row.note ? `${row.tooth} missing · Note: ${row.note}` : `${row.tooth} missing`}
+                style={{
+                  padding: '8px 6px 5px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(0,0,0,0.12)',
+                  background: '#6B7280',
+                  color: '#fff',
+                  fontWeight: 800,
+                  fontSize: '13px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '2px',
+                  minWidth: '48px',
+                  lineHeight: 1.1,
+                  cursor: 'default'
+                }}
+              >
+                <span style={{ fontSize: '0.9rem', textDecoration: 'line-through' }}>{row.tooth}</span>
+                <span style={{ fontSize: '0.58rem', fontWeight: 650, opacity: 0.9 }}>Missing</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {medications.length > 0 && (
         <div style={{ marginTop: chiefText || hasTeethOrLegacy ? '14px' : 0 }}>
