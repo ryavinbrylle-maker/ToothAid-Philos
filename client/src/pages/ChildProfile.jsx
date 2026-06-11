@@ -270,7 +270,7 @@ const VisitHistoryEntryDetail = ({ visit }) => {
             </p>
           )}
         </>
-      )}      )}
+      )}
 
       {missingTeeth.length > 0 && (
         <div style={{ marginTop: chiefText || hasTeethOrLegacy ? '14px' : '8px' }}>

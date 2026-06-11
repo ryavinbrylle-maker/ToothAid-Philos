@@ -14,6 +14,7 @@ import {
   addToOutbox,
   deleteAppointment,
   getAllClinicDays,
+  getAppointmentsByChild,
   getAppointmentsByClinicDay,
   getChild,
   performSync,
@@ -354,6 +355,15 @@ export default function ScheduleDay({ token }) {
 
       await upsertAppointment(appointmentData);
       await addToOutbox('UPSERT_APPOINTMENT', appointmentId, appointmentData);
+
+      // Once the patient is placed on the calendar, drop any leftover waiting-list
+      // entry (TO_BE_SCHEDULED appointment) so they no longer appear as "to be scheduled".
+      const childAppts = await getAppointmentsByChild(pickedChildId);
+      const waitlisted = childAppts.filter((a) => a.status === 'TO_BE_SCHEDULED');
+      for (const wl of waitlisted) {
+        await deleteAppointment(wl.appointmentId);
+        await addToOutbox('DELETE_APPOINTMENT', wl.appointmentId, { appointmentId: wl.appointmentId });
+      }
 
       const nextAppts = [...appointments, appointmentData];
       setAppointments(nextAppts);
