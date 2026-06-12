@@ -118,6 +118,7 @@ function mergeAppointmentRowFromPull(serverRow, local) {
   restoreIfServerMissingOrEmpty('priority', { treatBlankStringAsEmpty: true });
   restoreIfServerMissingOrEmpty('note', { treatBlankStringAsEmpty: true });
   restoreIfServerMissingOrEmpty('procedureType', { treatBlankStringAsEmpty: true });
+  restoreIfServerMissingOrEmpty('contactDate', { treatBlankStringAsEmpty: true });
   restoreIfServerMissingOrEmpty('createdBy', { treatBlankStringAsEmpty: true });
   restoreIfServerMissingOrEmpty('statusChangedAt');
   restoreIfServerMissingOrEmpty('statusChangedBy', { treatBlankStringAsEmpty: true });

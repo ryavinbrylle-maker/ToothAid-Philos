@@ -117,6 +117,12 @@ const appointmentSchema = new mongoose.Schema({
     default: null,
     trim: true
   },
+  /** Date the patient was contacted (YYYY-MM-DD). Used to order the waiting list oldest-first. */
+  contactDate: {
+    type: String,
+    default: null,
+    trim: true
+  },
   priorityTier: {
     type: Number,
     default: null

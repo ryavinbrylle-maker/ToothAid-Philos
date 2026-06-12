@@ -3,11 +3,13 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import NavBar from '../components/NavBar';
 import PageHeader from '../components/PageHeader';
 import AppointmentProcedureField from '../components/AppointmentProcedureField';
+import DateInput from '../components/DateInput';
 import PatientContactModal from '../components/PatientContactModal';
 import { formatChildDisplayName } from '../utils/displayName';
 import { resolveProcedureTypeForSave } from '../constants/appointmentProcedures';
 import {
   addToOutbox,
+  deleteAppointment,
   getAllClinicDays,
   getAppointmentsByClinicDay,
   getAppointmentsByStatus,
@@ -21,9 +23,15 @@ import { isActiveBookedSlot } from '../utils/appointmentStatus';
 import { toYmd } from '../utils/dates';
 import { notifyError, notifySuccess } from '../utils/notify';
 
+/** Format a YYYY-MM-DD string as MM/DD/YYYY (app standard display), timezone-safe. */
+function formatYmdForDisplay(ymd) {
+  if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return '—';
+  const [y, m, d] = ymd.split('-');
+  return `${m}/${d}/${y}`;
+}
+
 /** Mon–Fri only, 5 columns per row (weekends omitted from the grid). */
-function buildWeekdayMonthGrid(year, monthIndex) {
-  const last = new Date(year, monthIndex + 1, 0).getDate();
+function buildWeekdayMonthGrid(year, monthIndex) {  const last = new Date(year, monthIndex + 1, 0).getDate();
   const chunks = [];
   let row = [];
 
@@ -92,6 +100,7 @@ export default function Schedule({ token }) {
   const [pickedProcedureSelect, setPickedProcedureSelect] = useState('Extraction');
   const [pickedProcedureCustom, setPickedProcedureCustom] = useState('');
   const [pickedRequestedVia, setPickedRequestedVia] = useState('SMS');
+  const [pickedContactDate, setPickedContactDate] = useState('');
   const [pickedNote, setPickedNote] = useState('');
   const [scheduleNowModal, setScheduleNowModal] = useState(null); // null | appointment
   const [scheduleNowDate, setScheduleNowDate] = useState(todayKey);
@@ -115,7 +124,12 @@ export default function Schedule({ token }) {
     const withChildren = await Promise.all(
       pending.map(async (appointment) => ({ appointment, child: await getChild(appointment.childId) }))
     );
-    withChildren.sort((a, b) => new Date(a.appointment.createdAt || 0) - new Date(b.appointment.createdAt || 0));
+    withChildren.sort((a, b) => {
+      const byContact =
+        new Date(a.appointment.contactDate || 0) - new Date(b.appointment.contactDate || 0);
+      if (byContact !== 0) return byContact;
+      return new Date(a.appointment.createdAt || 0) - new Date(b.appointment.createdAt || 0);
+    });
     setWaitingList(withChildren);
   };
 
@@ -271,6 +285,7 @@ export default function Schedule({ token }) {
     setPickedProcedureSelect('Extraction');
     setPickedProcedureCustom('');
     setPickedRequestedVia('SMS');
+    setPickedContactDate('');
     setPickedNote('');
   };
 
@@ -281,6 +296,10 @@ export default function Schedule({ token }) {
 
   const addToWaitingList = async () => {
     if (!pickedChildId) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(pickedContactDate)) {
+      notifyError('Contact date is required.');
+      return;
+    }
     setWaitlistSaving(true);
     try {
       const existing = await getAppointmentsByStatus('TO_BE_SCHEDULED');
@@ -301,6 +320,7 @@ export default function Schedule({ token }) {
         reason: 'FOLLOW_UP',
         status: 'TO_BE_SCHEDULED',
         procedureType: resolveProcedureTypeForSave(pickedProcedureSelect, pickedProcedureCustom),
+        contactDate: pickedContactDate,
         note: pickedNote.trim() || null,
         metadata: {
           waitlistRequestedVia: pickedRequestedVia
@@ -322,6 +342,29 @@ export default function Schedule({ token }) {
       notifySuccess('Added to waiting list.');
     } catch (e) {
       notifyError(e?.message || 'Failed to add to waiting list');
+    } finally {
+      setWaitlistSaving(false);
+    }
+  };
+
+  const removeFromWaitingList = async (appointment, child) => {
+    const name = child?.fullName || 'this patient';
+    if (!window.confirm(`Remove ${name} from the waiting list?`)) return;
+    setWaitlistSaving(true);
+    try {
+      await deleteAppointment(appointment.appointmentId);
+      await addToOutbox('DELETE_APPOINTMENT', appointment.appointmentId, {
+        appointmentId: appointment.appointmentId
+      });
+      if (navigator.onLine && token) {
+        try {
+          await syncPush(token);
+        } catch {}
+      }
+      await reloadWaitingList();
+      notifySuccess('Removed from waiting list.');
+    } catch (e) {
+      notifyError(e?.message || 'Failed to remove from waiting list');
     } finally {
       setWaitlistSaving(false);
     }
@@ -518,6 +561,9 @@ export default function Schedule({ token }) {
                     {appointment.note ? ` · ${appointment.note}` : ''}
                   </div>
                   <div style={{ fontSize: '12px', color: 'var(--color-muted)', marginTop: '4px' }}>
+                    Contact date: {formatYmdForDisplay(appointment.contactDate)}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--color-muted)', marginTop: '4px' }}>
                     Requested via: {appointment?.metadata?.waitlistRequestedVia || '—'}
                     {' · '}
                     Added: {appointment.createdAt ? new Date(appointment.createdAt).toLocaleDateString() : '—'}
@@ -539,6 +585,14 @@ export default function Schedule({ token }) {
                     disabled={waitlistSaving}
                   >
                     Schedule now
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => removeFromWaitingList(appointment, child)}
+                    disabled={waitlistSaving}
+                  >
+                    Remove
                   </button>
                 </div>
               </div>
@@ -721,6 +775,17 @@ export default function Schedule({ token }) {
                 </div>
               </div>
             )}
+
+            <div className="form-group" style={{ marginBottom: '10px' }}>
+              <label>Contact Date</label>
+              <DateInput
+                name="contactDate"
+                value={pickedContactDate}
+                onChange={(e) => setPickedContactDate(e.target.value)}
+                required
+                placeholder="Select contact date"
+              />
+            </div>
 
             <AppointmentProcedureField
               selectValue={pickedProcedureSelect}
